@@ -18,14 +18,9 @@ from langchain_core.documents import Document
 from src.utils import rank_docs
 from string import punctuation
 from concurrent.futures import ThreadPoolExecutor
-from src.transformerEmbeddings import TransformerEmbeddings
-# from langchain_huggingface.embeddings import HuggingFaceEmbeddings
-# from ragas.llms import LangchainLLMWrapper
-# from ragas.embeddings import LangchainEmbeddingsWrapper
 from deepeval import evaluate as ev
 from deepeval.dataset import EvaluationDataset
 from deepeval.test_case import LLMTestCase
-from deepeval import assert_test
 
 
 def create_concept_graph_structure(param_list: list) -> dict:
