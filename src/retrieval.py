@@ -3,6 +3,7 @@ from langchain_core.documents import Document
 from langchain_mongodb.vectorstores import MongoDBAtlasVectorSearch
 from src.transformerEmbeddings import TransformerEmbeddings
 from src.utils import chunk_doc
+# from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 
 
 class RetrievalSystem:
@@ -12,6 +13,7 @@ class RetrievalSystem:
                 chunk_overlap: int, 
                 db_name: str,
                 collection_name: str,
+                model: str,
                 reset: bool = False):
         '''
         Construct a retrieval system using MongoDB Atlas
@@ -23,6 +25,7 @@ class RetrievalSystem:
             chunk_overlap (int): number of characters to overlap between chunks
             db_name (str): name of MongoDB database
             collection_name (str): name of MongoDB collection
+            model (str): sentence transformer model to use 
             reset (bool, default False): if True, drop all documents from collection before adding new content
         '''
         self.db_name = db_name
@@ -32,23 +35,23 @@ class RetrievalSystem:
         # chunk and put text in documents 
         # idk the best way to do this
         try:
-            chunks = chunk_doc(chunk_size, chunk_overlap, link = content)
+            chunks = chunk_doc(chunk_size, chunk_overlap, link = content, model = model)
         except Exception:
             try:
-                chunks = chunk_doc(chunk_size, chunk_overlap, document = content)
+                chunks = chunk_doc(chunk_size, chunk_overlap, document = content, model = model)
             except Exception:
-                chunks = chunk_doc(chunk_size, chunk_overlap, pdf_path = content)
+                chunks = chunk_doc(chunk_size, chunk_overlap, pdf_path = content, model = model)
 
-        # normalize text chunks
-        # chunks = [normalize_text(chunk) for chunk in chunks]
+        # # normalize text chunks
+        # # chunks = [normalize_text(chunk) for chunk in chunks]
 
-        # create documents
+        # # create documents
         self.docs = [Document(page_content = chunk) for chunk in chunks]
 
         if reset:
             self.remove_docs()
         
-        self.store = MongoDBAtlasVectorSearch(collection = self.collection, embedding = TransformerEmbeddings())
+        self.store = MongoDBAtlasVectorSearch(collection = self.collection, embedding = TransformerEmbeddings(model = model))
 
         if reset:
             self.store.add_documents(documents = self.docs)
@@ -68,6 +71,7 @@ class RetrievalSystem:
         # query = normalize_text(text = query)
         # print(f'Query after normalization:', query)
         return self.store.similarity_search(query = query, k = k)
+
 
     def remove_docs(self):
         '''Remove all documents from collection'''

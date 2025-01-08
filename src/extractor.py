@@ -7,20 +7,25 @@ from pyvis.network import Network
 import hypernetx as hnx
 import matplotlib.pyplot as plt
 import graphlib
-from py3plex.core import multinet
-from ragas import evaluate as ev
-from ragas import SingleTurnSample
-from ragas.dataset_schema import EvaluationDataset
+# from ragas import evaluate as ev
+# from ragas import SingleTurnSample
+# from ragas.dataset_schema import EvaluationDataset
 import networkx as nx
 import plotly.express as px
+import plotly.graph_objects as go
 from src.retrieval import RetrievalSystem
-from pandas import DataFrame
-from ragas.testset import TestsetGenerator
-from src.transformerEmbeddings import TransformerEmbeddings
-from ragas.embeddings import LangchainEmbeddingsWrapper
-from ragas.llms import LangchainLLMWrapper
 from langchain_core.documents import Document
 from src.utils import rank_docs
+from string import punctuation
+from concurrent.futures import ThreadPoolExecutor
+from src.transformerEmbeddings import TransformerEmbeddings
+# from langchain_huggingface.embeddings import HuggingFaceEmbeddings
+# from ragas.llms import LangchainLLMWrapper
+# from ragas.embeddings import LangchainEmbeddingsWrapper
+from deepeval import evaluate as ev
+from deepeval.dataset import EvaluationDataset
+from deepeval.test_case import LLMTestCase
+from deepeval import assert_test
 
 
 def create_concept_graph_structure(param_list: list) -> dict:
@@ -53,15 +58,15 @@ class relationExtractor:
                 link: str, 
                 token: str, 
                 chapters: list[str], 
-                stopword: str,
                 connection_string: str,
                 chunk_size: int,
                 chunk_overlap: int,
                 db_name: str,
                 collection_name: str,
                 reset: bool = False,
-                model: str = 'gpt-4o-mini',
-                temp: int = 1):
+                openai_model: str = 'gpt-4o-mini',
+                st_model: str = 'all-MiniLM-L12-v2',
+                temp: int = 0):
         '''
         Constructor to create a large language model relation extractor class. 
 
@@ -69,7 +74,6 @@ class relationExtractor:
             link (str): the web link to generate answers from
             token (str): OpenAI token
             chapters (list): list of chapter/section names in link
-            stopword (str): word where last chapter ends (usually appendix or bibliography)
             connection_string (str): connection string to MongoDB 
             chunk_size (int): number of characters in a chunk of content
             chunk_overlap (int): number characters to overlap between content chunks
@@ -81,12 +85,13 @@ class relationExtractor:
         '''
         self.link = link
         self.chapters = chapters
-        self.stopword = stopword
-  
-        os.environ['OPENAI_API_KEY'] = token
-        self.llm = ChatOpenAI(model = model, max_tokens = None, temperature = temp)
+        self.openai_model = openai_model
+        self.embedding_model = st_model
 
-        self.vs = RetrievalSystem(connection_string, self.link, chunk_size, chunk_overlap, db_name, collection_name, reset)
+        os.environ['OPENAI_API_KEY'] = token
+        self.llm = ChatOpenAI(model = openai_model, max_tokens = None, temperature = temp)
+
+        self.vs = RetrievalSystem(connection_string, self.link, chunk_size, chunk_overlap, db_name, collection_name, st_model, reset)
 
     
     def retrieval_pipeline(self, query: str, context: str, num_queries: int = 4, top_n: int = 4) -> list[Document]:
@@ -137,40 +142,72 @@ class relationExtractor:
             list[str]: if getting key terms for a chapter\n
             dict[str, list[str]]: if getting key terms from a list of concepts
         '''
-        if not isinstance(n_terms, int):
-            raise TypeError(f'n_terms must be int type, got {type(n_terms)}')
+        # if not isinstance(n_terms, int):
+        #     raise TypeError(f'n_terms must be int type, got {type(n_terms)}')
 
-        if concepts is None and chapter_name is None:
-            raise ValueError(f'chapter_name and concepts cannot both be None')
+        # if concepts is None and chapter_name is None:
+        #     raise ValueError(f'chapter_name and concepts cannot both be None')
         
-        if input_type == 'chapter':
+        # if input_type == 'chapter':
+        #     prompt = f'''
+        #             Identify {n_terms} key terms from Chapter {chapter_name} in descending order of significance, listing the most significant terms first. The textbook is available here: {self.link}.
+        #             For each term, provide the following:
+        #             - Confidence Interval (CI),
+        #             - Corresponding Statistical Significance (p-value),
+        #             - A brief explanation of the term's relevance and importance,
+        #             Format:
+        #             term :: confidence interval :: p-value :: explanation
+        #             '''
+
+        #     terms = self.llm.invoke(prompt).content 
+
+        #     return [string for string in terms.split('\n') if string != '']
+
+        # # step 2
+        # elif input_type == 'concepts':
+        #     concept_terms = {}
+        #     for concept in concepts:
+        #         concept = ' '.join(concept)
+
+        #         prompt = f'''
+        #                 Identify {n_terms} key terms for the following concept: {concept}. 
+        #                 Provide your answer in the following format:
+
+        #                 Concept 1,
+        #                 Concept 2,
+        #                 Concept 3, 
+        #                 ...
+        #                 Concept n
+        #                 '''
+
+        #         words = self.llm.invoke(prompt).content
+        #         concept_terms[concept] = [string for string in words.split('\n') if string != '']
+
+        #     return concept_terms
+
+        # else:
+        #     raise ValueError(f'input_type value must be chapter or concepts, got {input_type}')
+        concept_terms = {}
+        for chapter in self.chapters:
+            relevant_docs = self.retrieval_pipeline(f'Identify {n_terms} key terms for chapter {chapter}.', self.link)
+
             prompt = f'''
-                    Identify {n_terms} key terms from Chapter {chapter_name} in descending order of significance, listing the most significant terms first. The textbook is available here: {self.link}.
-                    For each term, provide the following:
-                    - Confidence Interval (CI),
-                    - Corresponding Statistical Significance (p-value),
-                    - A brief explanation of the term's relevance and importance,
-                    Format:
-                    term :: confidence interval :: p-value :: explanation
+                    Identify {n_terms} key terms for chapter {chapter}. 
+                    Relevant documents can be found here: {relevant_docs}
+
+                    Provide your answer in the following format:
+
+                    Concept 1,
+                    Concept 2,
+                    Concept 3, 
+                    ...
+                    Concept n
                     '''
 
-            terms = self.llm.invoke(prompt).content 
+            words = self.llm.invoke(prompt).content
+            concept_terms[chapter] = [string for string in words.split('\n') if string != '']
 
-            return [string for string in terms.split('\n') if string != '']
-
-        # step 2
-        elif input_type == 'concepts':
-            concept_terms = {}
-            for concept in concepts:
-                concept = ' '.join(concept)
-                # prompt should include concepts, web link, and documents from retrieval mechanism
-                words = self.llm.invoke(f'Identify {n_terms} key terms for the following concept: {concept}. ').content
-                concept_terms[concept] = [string for string in words.split('\n') if string != '']
-
-            return concept_terms
-
-        else:
-            raise ValueError(f'input_type value must be chapter or concepts, got {input_type}')
+        return concept_terms
 
 
     def summarize(self) -> str:
@@ -396,12 +433,12 @@ class relationExtractor:
     #     return associations
 
 
-    def identify_dependencies(self, concept_dict: dict[str, list[str]]) -> dict[str, list[str]]:
+    def identify_dependencies(self, content: list[list[str]]) -> dict[str, list[str]]:
         '''
-        Identify the dependency relationships between chapters, returns a dictionary where the key is a chapter name and the value is a list of chapters it depends on
+        Identify the dependency relationships between chapters
 
         Args: 
-            concept_dict (dict[str, list[str]]): a dictionary containing the chapter names as keys and their learning concepts as values. Dictionary should come from the create_chapter_dict() function
+            content (list[list[str]]): key terms, outcomes, or concepts to be used to identify chapter dependencies 
 
         Returns:
             dict[str, list[str]]: depedencies between chapters as adjacency list
@@ -409,28 +446,26 @@ class relationExtractor:
 
         relation = ''
 
-        keys = list(concept_dict.keys())
-        relations_dict = create_concept_graph_structure(keys)
+        relations_dict = create_concept_graph_structure(self.chapters)
 
-        for i in range(len(keys)):
-            current_concept = concept_dict[keys[i]][0]
-            for j in range(i + 1, len(keys)):
-                next_concept = concept_dict[keys[j]][0]
+        for i in range(len(self.chapters)):
+            current_concept = ' '.join(content[i])
+            for j in range(i + 1, len(self.chapters)):
+                next_concept = ' '.join(content[j])
 
-                relation = self.llm(f"Please identify if these concepts: {next_concept} are a prerequisite for these concepts: {current_concept}. If there is NO prerequisite, please respond with 'No' and 'No' only.")
-                relation = re.sub(re.compile('[^a-zA-Z\s\.,!?]'), '', relation)
+                relation = self.llm.invoke(f"Please identify if these concepts: {next_concept} are a prerequisite for these concepts: {current_concept}. If there is NO prerequisite, please respond with 'No' and 'No' only.").content
                 if relation.split(',')[0].strip() != 'No':
-                    relations_dict[keys[j]].append(keys[i])
+                    relations_dict[self.chapters[j]].append(self.chapters[i])
 
         return relations_dict
 
 
     def print_flat_graph(self, concept_graph: dict[str, list[str]]) -> None:
         '''
-        Print a directed graph using either the association dictionary or dependency dictionary
+        Print a directed graph using the dependency dictionary
 
         Args:
-            learning_concept_graph: The dictionary to build the graph from. This should come from either the identify_associations function or identify_dependencies function
+            concept_graph: The dictionary to build the graph from. This should come from either the identify_associations function or identify_dependencies function
         
         Returns:
             None
@@ -535,7 +570,7 @@ class relationExtractor:
         Generate and display a multilayered graph given a dependency dictionary generated from identify_dependencies() or association dict generated by identify_associations()
 
         Args:
-            dependencies (dict[str, list[str]]): A dictionary of dependencies. Can be generated by identify_dependencies(). The key should be a chapter name and the value a list of chapters it depends on
+            dependencies (dict[str, list[str]]): A dictionary of dependencies. Generated by identify_dependencies(). The key should be a chapter name and the value a list of chapters it depends on
 
         Returns:
             None
@@ -549,50 +584,34 @@ class relationExtractor:
 
         for value in temp:
             sorted_dependencies[value] = dictionary[value]
-        
 
-        multi_graph = multinet.multi_layer_network(network_type = "multiplex")
 
-        for node, edges in sorted_dependencies.items():
-            node_data = {"source": node, "type": node}
-            multi_graph.add_nodes(node_data)
-            for edge in edges:
-                simple_edge = {
-                        "source": node,
-                        "target": edge,
-                        "source_type": node,
-                        "target_type": edge
-                        }
-                
-                multi_graph.add_edges(simple_edge, input_type = "dict") 
-
-        multi_graph.visualize_network(style = "diagonal")
-        plt.title("Multilayered Dependency Graph")
-        plt.show()
-
-    
-    def plot_sunburst(names: list[str], parents: list[str], values: list[int]) -> None:
+    def draw_hierarchy(self, terms: list[tuple[str, str]]) -> None:
         '''
-        Plots a sunburst chart 
+        Draws the hierarchy given a list of terms
 
         Args:
-            names (list[str]): labels of sectors 
-            parents (list[str]): parental values to use in sunburst chart 
-            values (list[int]): sector size values
-        
+            terms (list[str]): terms to draw a hierarchy of
+
         Returns:
             None
         '''
-        if len(names) != len(parents) or len(names) != len(values) or len(parents) != len(values):
-            raise ValueError(f'list lengths must be the same')
-        
-        fig = px.sunburst(
-            names = names,
-            parents = parents,
-            values = values
-        )
+        g = graphviz.Digraph(graph_attr = {'rankdir': 'TB'})
+        nodes = set()
+        edges = set()
 
-        fig.show()
+        for tup in terms:
+            first, second = tup
+            if first not in nodes:
+                g.node(first)
+
+                if (first, second) not in edges:
+                    g.edge(first, second)
+
+                nodes.add(first)
+                edges.add((first, second))
+
+        display(Image(g.pipe(format = "png", renderer = "cairo", engine = 'dot')))
 
 
     def evaluate(self, 
@@ -602,8 +621,9 @@ class relationExtractor:
                 ground_truth: list[str], 
                 data: list[list[str]] | dict[str, list[str]],
                 metrics: list = None, 
-                ) -> list[SingleTurnSample]:
-        '''
+                ) -> list[LLMTestCase]:
+                # ) -> list[SingleTurnSample]:
+        ''' 
         Evaluate concepts or outcomes generated from the large language model  
 
         Args:
@@ -632,74 +652,79 @@ class relationExtractor:
             elif type_eval == 'outcomes':
                 prompt = f'Identify the {num_generated} most important learning outcomes for chapter {self.chapters[i]}. The relevant context can be found here: {data[keys[i]]}.'
                 retrieved = data[keys[i]]
-
-            # elif type_eval == 'outcomes' and outcomes_from == 'concepts':
-            #     concept = ' '.join(data[i])
-            #     prompt = f'Identify the main learning {type_eval} from these concepts: {concept}'
-            #     retrieved = ' '.join(data[i])
-
-            # elif type_eval == 'outcomes' and outcomes_from == 'CKT':
-            #     terms = ' '.join(data[keys[i]])
-            #     prompt = f'Identify the main learning {type_eval} given these concepts {keys[i]} and these key terms {terms}'
-            #     retrieved = keys[i] + ' ' + terms
             
-            # elif type_eval == 'terms':
-            #     concept = ' '.join(data[i])
-            #     prompt = f'Identify {n_terms} key terms for the following concept: {data[i]}.'
-            #     retrieved = ' '.join(data[i])
-            
-            # else:
-            #     raise ValueError(f'invalid parameter arguments, check function description')
+            elif type_eval == 'terms':
+                concept = ' '.join(data[i])
+                prompt = f'Identify {num_generated} key terms for the following concept: {concept}.'
+                retrieved = data[keys[i]]
 
 
-            samples.append(SingleTurnSample(
-                user_input = prompt,
-                response = ' '.join(generated[i]) if not isinstance(generated, dict) else ' '.join(values[i]),
-                retrieved_contexts = [retrieved],
-                reference = ground_truth[i],
+            samples.append(LLMTestCase(
+                input = prompt, 
+                actual_output = ' '.join(generated[i]) if not isinstance(generated, dict) else ' '.join(values[i]),
+                retrieval_context = [retrieved],
+                expected_output = ground_truth[i],
                 # reference_contexts = [textbook[self.chapters[i]]] # for now this is just the chapter text, maybe should remove
             ))
 
-        dataset = EvaluationDataset(samples = samples)
+        dataset = EvaluationDataset(test_cases = samples)
 
         if metrics is None:
-            print(ev(dataset = dataset))
+            # print(ev(dataset = dataset, llm = self.llm, embeddings = LangchainEmbeddingsWrapper(TransformerEmbeddings(model = self.embedding_model))))
+            result = ev(dataset, metrics, verbose_mode = False)
         else:
-            print(ev(dataset = dataset, metrics = metrics))
+            # print(ev(dataset = dataset, metrics = metrics, llm = LangchainLLMWrapper(self.llm), embeddings = LangchainEmbeddingsWrapper(TransformerEmbeddings(model = self.embedding_model))))
+            result = ev(dataset, metrics, verbose_mode = False)
 
+        print(result)
         return samples
 
 
-    def build_terminology(self, concept_terms: list[list[str]]) -> list[str]:
+    def build_terminology(self, terms: list[list[str]], num_workers: int = 1) -> list[tuple[str, str]]:
         '''
-        Build a terminology using is-a relationships between key terms
+        Build terminology using terms and is-a relationships 
 
         Args:
-            key_terms (list[str]): key terms to use
+            terms (list[list[str]]): key terms to use
+            num_workers (int, default 1): number of workers to use 
 
         Returns:
-            list[str]: terminology 
+            list[tuple[str, str]]: is-a relationships 
         '''
-        terminology = []
-        concept_terms = [word for concepts in concept_terms for word in concepts]
+        def clean(text):
+            text = ''.join([char for char in text if char not in punctuation])
+            text = text.strip()
+            return text
 
-        for i in range(len(concept_terms)):
-            for j in range(len(concept_terms)):
-                if i != j:
-                    prompt = f'''
-                            Q: Is there an is-a relationship present between dog and mammal?
-                            A: Yes
+        def process_pair(first, second):
+            if first == second: return None
+            prompt = f'''
+                Q: Is there an is-a relationship present between dog and mammal?
+                A: Yes
 
-                            Q: Is there an is-a relationship present between vehicle and car?
-                            A: No
+                Q: Is there an is-a relationship present between vehicle and car?
+                A: No
 
-                            Q: Is there an is-a relationship presnet between {concept_terms[i]} and {concept_terms[j]}?
-                            '''
-                    response = self.llm.invoke(prompt).content
-                    if 'yes' in response.lower():
-                        terminology.append((concept_terms[i], concept_terms[j]))
+                Q: Is there an is-a relationship presnet between {first} and {second}?
+                '''
+            response = self.llm.invoke(prompt).content
+            return (first, second) if 'yes' in response.lower() else None
 
-        return terminology
+        terminology = set()
+        terms = [clean(word) for l in terms for word in l]
+
+        with ThreadPoolExecutor(max_workers = num_workers) as p:
+            futures = []
+            for i in range(len(terms)):
+                for j in range(len(terms)):
+                    if i != j:
+                        futures.append(p.submit(process_pair, terms[i], terms[j]))
+
+            for f in futures:
+                result = f.result()
+                if result is not None: terminology.add(result)
+
+        return list(terminology)
 
 
     # TODO

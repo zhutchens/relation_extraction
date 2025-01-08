@@ -2,9 +2,14 @@ from sentence_transformers import SentenceTransformer
 from langchain_core.embeddings import Embeddings
 
 class TransformerEmbeddings(Embeddings):
-    def __init__(self):
-        self.model = SentenceTransformer('all-MiniLM-L12-v2')
+    def __init__(self, model: str):
+        '''
+        Constructor for transformer embeddings
 
+        Args:
+            model (str): sentence transformer to use
+        '''
+        self.model = SentenceTransformer(model)
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         '''

@@ -45,7 +45,6 @@ Then, install packages:
 ```
 pip install -r requirements.txt
 ```
-
 # data
 Concepts for data structures course. Sorting file is only concepts for searching and sorting chapters
 

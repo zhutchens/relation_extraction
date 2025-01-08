@@ -33,7 +33,6 @@ distro==1.9.0
 dnspython==2.7.0
 docstring_parser==0.16
 editdistpy==0.1.5
-en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 exceptiongroup==1.2.2
 executing==2.0.1
 fastjsonschema==2.21.1
@@ -42,19 +41,6 @@ fonttools==4.53.1
 frozenlist==1.4.1
 fsspec==2024.9.0
 gensim==4.3.2
-google-api-core==2.24.0
-google-api-python-client==2.157.0
-google-auth==2.37.0
-google-auth-httplib2==0.2.0
-google-cloud-aiplatform==1.75.0
-google-cloud-bigquery==3.27.0
-google-cloud-core==2.4.1
-google-cloud-discoveryengine==0.11.14
-google-cloud-resource-manager==1.14.0
-google-cloud-storage==2.19.0
-google-crc32c==1.6.0
-google-resumable-media==2.7.2
-googleapis-common-protos==1.66.0
 graphviz==0.20.3
 greenlet==3.0.3
 grpc-google-iam-v1==0.14.0
@@ -71,6 +57,7 @@ idna==3.7
 igraph==0.11.6
 ipykernel==6.29.5
 ipython==8.26.0
+ipython-genutils==0.2.0
 isodate==0.6.1
 jedi==0.19.1
 Jinja2==3.1.5
@@ -79,6 +66,8 @@ joblib==1.4.2
 jsonpatch==1.33
 jsonpickle==3.2.2
 jsonpointer==3.0.0
+jsonschema==4.23.0
+jsonschema-specifications==2024.10.1
 jupyter_client==8.6.2
 jupyter_core==5.7.2
 kiwisolver==1.4.5
@@ -106,6 +95,7 @@ multiprocess==0.70.16
 murmurhash==1.0.11
 mypy-extensions==1.0.0
 narwhals==1.19.1
+nbformat==4.2.0
 nest-asyncio==1.6.0
 networkx==3.4.2
 nltk==3.9.1
@@ -155,12 +145,14 @@ ragas==0.2.8
 rank-bm25==0.2.2
 RapidFuzz==3.11.0
 rdflib==7.0.0
+referencing==0.35.1
 regex==2024.11.6
 requests==2.32.3
 requests-file==2.1.0
 requests-toolbelt==1.0.0
 rich==13.9.4
 rouge-score==0.1.2
+rpds-py==0.22.3
 rsa==4.9
 safetensors==0.4.5
 scikit-learn==1.5.1
@@ -173,8 +165,6 @@ six==1.16.0
 smart-open==7.0.4
 sniffio==1.3.1
 spacy==3.8.3
-spacy-legacy==3.0.12
-spacy-loggers==1.0.5
 SQLAlchemy==2.0.31
 srsly==2.5.0
 stack-data==0.6.3
