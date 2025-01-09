@@ -6,3 +6,5 @@ DS_Store
 .env
 .deepeval-cache.json
 .deepeval_telemtry.txt
+.temp-deepeval-cache.json
+temp_test_run_data.json
