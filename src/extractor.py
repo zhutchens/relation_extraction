@@ -19,8 +19,9 @@ from src.utils import rank_docs
 from string import punctuation  
 from concurrent.futures import ThreadPoolExecutor
 from deepeval import evaluate as ev
-from deepeval.dataset import EvaluationDataset
+# from deepeval.dataset import EvaluationDataset
 from deepeval.test_case import LLMTestCase
+from deepeval.evaluate import EvaluationResult
 
 
 def create_concept_graph_structure(param_list: list) -> dict:
@@ -182,9 +183,11 @@ class relationExtractor:
 
         # else:
         #     raise ValueError(f'input_type value must be chapter or concepts, got {input_type}')
-        concept_terms = {}
+        terms = []
+        retrieved = {}
         for chapter in self.chapters:
             relevant_docs = self.retrieval_pipeline(f'Identify {n_terms} key terms for chapter {chapter}.', self.link)
+            retrieved[chapter] = relevant_docs
 
             prompt = f'''
                     Identify {n_terms} key terms for chapter {chapter}. 
@@ -200,9 +203,9 @@ class relationExtractor:
                     '''
 
             words = self.llm.invoke(prompt).content
-            concept_terms[chapter] = [string for string in words.split('\n') if string != '']
+            terms.append([string for string in words.split('\n') if string != ''])
 
-        return concept_terms
+        return terms, retrieved
 
 
     def summarize(self) -> str:
@@ -391,7 +394,7 @@ class relationExtractor:
             current_concept = self.llm.invoke(single_prompt).content
             concept_list.append([concept for concept in current_concept.split('\n') if concept != ''])
 
-        return retrieved_contexts, concept_list
+        return concept_list, retrieved_contexts
 
     
     # def get_assocations(self, first: list[list[str]] | list[str], second: list[list[str]] | list[str]) -> list[str]:
@@ -615,8 +618,8 @@ class relationExtractor:
                 generated: list[list[str]] | dict[str, list[str]], 
                 ground_truth: list[str], 
                 data: list[list[str]] | dict[str, list[str]],
-                metrics: list = None, 
-                ) -> list[LLMTestCase]:
+                metrics: list, 
+                ) -> EvaluationResult:
                 # ) -> list[SingleTurnSample]:
         ''' 
         Evaluate concepts or outcomes generated from the large language model  
@@ -627,7 +630,7 @@ class relationExtractor:
             generated (list[list[str]] | dict[str, list[str]]): dictionary with chapter name as key and value as the list of concepts
             ground_truth (list): ground truth concepts 
             data (list[list[str]] | dict[str, list[str]]): data given to function that identifies terms, concepts, or outcomes
-            metrics (list, default None): list of metrics to use from ragas library
+            metrics (list): list of metrics to use for evaluation
 
         Returns:
             list[SingleTurnSample]: list of samples used for evaluation  
@@ -662,17 +665,11 @@ class relationExtractor:
                 # reference_contexts = [textbook[self.chapters[i]]] # for now this is just the chapter text, maybe should remove
             ))
 
-        dataset = EvaluationDataset(test_cases = samples)
+        # dataset = EvaluationDataset(test_cases = samples)
 
-        if metrics is None:
-            # print(ev(dataset = dataset, llm = self.llm, embeddings = LangchainEmbeddingsWrapper(TransformerEmbeddings(model = self.embedding_model))))
-            result = ev(dataset, metrics, verbose_mode = False)
-        else:
-            # print(ev(dataset = dataset, metrics = metrics, llm = LangchainLLMWrapper(self.llm), embeddings = LangchainEmbeddingsWrapper(TransformerEmbeddings(model = self.embedding_model))))
-            result = ev(dataset, metrics, verbose_mode = False)
+        result = ev(samples, metrics)
 
-        print(result)
-        return samples
+        return result
 
 
     def build_terminology(self, terms: list[list[str]], num_workers: int = 1) -> list[tuple[str, str]]:

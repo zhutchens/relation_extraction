@@ -1,14 +1,15 @@
-FROM python:3.12.8-bookworm
+FROM ubuntu:22.04
 
-WORKDIR /eduProject
+WORKDIR /project 
 COPY . .
 
-RUN pip3 install --upgrade pip
+RUN apt-get update 
 
-RUN pip3 install --upgrade pip setuptools wheel
-RUN pip3 install -r requirements.txt
-RUN pip3 install notebook
-RUN python3 -m nltk.downloader wordnet stopwords punkt_tab
+RUN apt-get install python3-pip -y
+
+RUN pip install -r requirements.txt
+RUN pip install notebook
+RUN python3 -m nltk.downloader stopwords wordnet punkt_tab
 
 EXPOSE 8888
 

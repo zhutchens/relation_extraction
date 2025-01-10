@@ -62,7 +62,7 @@ playground - trying out different code and functions and seeing what works best
 testing - evaluation testing of the entire architecture using undergrad DS textbook
 
 # notes / observations
-The testing file is the main focus right now. I have observed several patterns when playing around with the validate function of the LLM_Relation_Extractor class. The evaluate() function provided by ragas is a little weird, and produces ambigious errors sometimes. Additionally, if llm and embedding arguments are given the metrics, the results significantly vary. 
+The testing file is the main focus right now. I have observed several patterns when playing around with the validate function of the relationExtractor class. The evaluate() function provided by ragas is a little weird, and produces ambigious errors sometimes. Additionally, if llm and embedding arguments are given the metrics, the results significantly vary. 
 
 For example, without an llm argument to LLMContextPrecisionWithReference, it's very high (1.0). Additionally, without an llm passed to LLMContextRecall, the performance is very poor (~0.20 - 0.30). However, if you add in arguments to these they essentially reverse. Precision becomes very poor (~0.0) and recall becomes very high (~1.0). 
 
@@ -74,3 +74,5 @@ Finally, evaluate() will sometimes produce these statements saying 'No statement
 
 
 TLDR: the evaluation results REALLY depend on the args passed to the metrics
+
+UPDATE: Upon trying deepeval for evaluation, the answer relevancy and faithfulness scores are much more consistent, but deepeval produces an inconsistent JSONDecodeError within its metrics for some reason. Currently looking into the cause and fix 
