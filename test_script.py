@@ -52,87 +52,89 @@ connection = getenv('connection_string')
 
 if textbook == 'dsa_2214':
     chapters = [
-    'Data Structures and Algorithms',
-    'Mathematical Preliminaries',
-    'Algorithm Analysis',
-    'Lists, Stacks, and Queues',
-    'Binary Trees',
-    'Non-Binary Trees',
-    'Internal Sorting',
-    'File Processing and External Sorting',
-    'Searching',
-    'Indexing',
-    'Graphs',
-    'Lists and Arrays Revisited',
-    'Advanced Tree Structures',
-    'Analysis Techniques',
-    'Lower Bounds',
-    'Patterns of Algorithms',
-    'Limits to Computation',
-]
+        'Data Structures and Algorithms',
+        'Mathematical Preliminaries',
+        'Algorithm Analysis',
+        'Lists, Stacks, and Queues',
+        'Binary Trees',
+        'Non-Binary Trees',
+        'Internal Sorting',
+        'File Processing and External Sorting',
+        'Searching',
+        'Indexing',
+        'Graphs',
+        'Lists and Arrays Revisited',
+        'Advanced Tree Structures',
+        'Analysis Techniques',
+        'Lower Bounds',
+        'Patterns of Algorithms',
+        'Limits to Computation',
+    ]
 elif textbook == 'dsa_6114':
-    chapters = ['The Role of Algorithms in Computing',
-            'Getting Started',
-            'Growth of Algoritmhs',
-            'Divide-and-Conquer',
-            'Probabilistic Analysis and Randomized Algorithms',
-            'Heapsort',
-            'Quicksort',
-            'Sorting in Linear Time',
-            'Medians and Order Statistics',
-            'Elementary Data Structures',
-            'Hash Tables',
-            'Binary Search Trees',
-            'Red-Black Trees',
-            'Augmenting Data Structures',
-            'Dynamic Programming',
-            'Greedy Algorithms',
-            'Amortized Analysis',
-            'B-Trees',
-            'Fibonacci Heaps',
-            'van Emde Boas Trees',
-            'Data Structure for Disjoint Sets',
-            'Elementary Graph Algoritmhs',
-            'Minimum Spanning Trees',
-            'Single-Source Shortest Paths',
-            'All-Pairs Shortest Paths',
-            'Maximum Flow',
-            'Multithreaded Algoritmhs',
-            'Matrix Operations',
-            'Linear Programming',
-            'Polynomials and the FFT',
-            'Number-Theoretic Algorithms',
-            'String Matching',
-            'Computational Geometry',
-            'NP-Completeness',
-            'Approximation Algorithms']
+    chapters = [
+        'The Role of Algorithms in Computing',
+        'Getting Started',
+        'Growth of Algoritmhs',
+        'Divide-and-Conquer',
+        'Probabilistic Analysis and Randomized Algorithms',
+        'Heapsort',
+        'Quicksort',
+        'Sorting in Linear Time',
+        'Medians and Order Statistics',
+        'Elementary Data Structures',
+        'Hash Tables',
+        'Binary Search Trees',
+        'Red-Black Trees',
+        'Augmenting Data Structures',
+        'Dynamic Programming',
+        'Greedy Algorithms',
+        'Amortized Analysis',
+        'B-Trees',
+        'Fibonacci Heaps',
+        'van Emde Boas Trees',
+        'Data Structure for Disjoint Sets',
+        'Elementary Graph Algoritmhs',
+        'Minimum Spanning Trees',
+        'Single-Source Shortest Paths',
+        'All-Pairs Shortest Paths',
+        'Maximum Flow',
+        'Multithreaded Algoritmhs',
+        'Matrix Operations',
+        'Linear Programming',
+        'Polynomials and the FFT',
+        'Number-Theoretic Algorithms',
+        'String Matching',
+        'Computational Geometry',
+        'NP-Completeness',
+        'Approximation Algorithms'
+    ]
 elif textbook == 'cs_3190':
     chapters = [
-    'Meet Hadoop',
-    'MapReduce',
-    'The Hadoop Distributed Filesystem',
-    'YARN',
-    'Hadoop I/O',
-    'Developing a MapReduce Application',
-    'How MapReduce Works',
-    'MapReduce Types and Formats',
-    'MapReduce Features',
-    'Setting up a Hadoop Cluster',
-    'Administering Hadoop',
-    'Avro',
-    'Parquet',
-    'Flume',
-    'Sqoop',
-    'Pig',
-    'Hive',
-    'Crunch',
-    'Spark',
-    'HBase',
-    'Zookeeper',
-    'Composable Data at Cerner',
-    'Biological Data Science: Saving Lives with Software.',
-    'Cascading'
-]
+        'Meet Hadoop',
+        'MapReduce',
+        'The Hadoop Distributed Filesystem',
+        'YARN',
+        'Hadoop I/O',
+        'Developing a MapReduce Application',
+        'How MapReduce Works',
+        'MapReduce Types and Formats',
+        'MapReduce Features',
+        'Setting up a Hadoop Cluster',
+        'Administering Hadoop',
+        'Avro',
+        'Parquet',
+        'Flume',
+        'Sqoop',
+        'Pig',
+        'Hive',
+        'Crunch',
+        'Spark',
+        'HBase',
+        'Zookeeper',
+        'Composable Data at Cerner',
+        'Biological Data Science: Saving Lives with Software.',
+        'Cascading'
+    ]
 
 chapters = chapters[which_chapters[0]:which_chapters[-1] + 1]
 CHUNK_SIZE = 500
@@ -192,21 +194,33 @@ if not os.path.exists('./results'):
 else:
     os.chdir('./results/')
 
-with open(f'results_{st_model}_{testing}.txt', 'w') as f:
+with open(f'results_{textbook}_{testing}.txt', 'w') as f:
     f.write(f'MODEL: {extractor.openai_model}\n')
     f.write(f'SENTENCE TRANSFORMER: {extractor.embedding_model}\n')
     f.write(f'CHAPTERS TESTED: {extractor.chapters}\n')
     f.write('\n')
 
+    averages = {}
     for r in results:
         data = r.metrics_data
         query = r.input
         output = r.actual_output
         for metric in data:
+            if metric.name not in averages.keys():
+                averages[metric.name] = metric.score
+            else:
+                averages[metric.name] += metric.score
+
             f.write(f'{metric.name} ---> SCORE: {metric.score} ---> {"FAILURE" if metric.score < threshold else "SUCCESS"}\n')
             f.write(f'REASON: {metric.reason}\n')
             f.write(f'QUERY: {query}\n')
             f.write(f'OUTPUT: {output}\n')
         f.write('\n')
-    
 
+    for k in averages.keys():
+        averages[k] /= len(results) # calculate average metric scores across all test cases
+
+    f.write(f'')
+    f.write('AVERAGE SCORES:\n')
+    for k, v in averages.items():
+        f.write(f'{k}: {v}\n')
