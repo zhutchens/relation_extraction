@@ -1,3 +1,12 @@
+# Overview
+This is an ongoing research project to develop structured knowledge from text data. Current supported features include retrieving concepts, retrieving outcomes, retrieving key terms, building a terminology from key terms, summarization, retrieval of main topics, dependencies between sections/chapters of text, and some visualization using plain graphs, hypergraphs, and interactive graphs. Evaluation is also supported using deepeval with ground truth values and retrieved contexts. Future features include knowledge graph creation, deeper visualization, and custom language model integration. 
+
+The substance of the project is located in the src directory. The experiments directory, playground.ipynb, and testing.ipynb will not work without setting up an env file, so it is suggested to create your own work file. 
+
+To use the main class, relationExtractor, you will need a MongoDB and OpenAI api token. 
+
+Bulk testing is also available with run_test.sh and test_script.py, but you will need to edit them to use your own data. In the future they may become an automatic test, but for the foreseeable future it will stay this way. 
+
 # Environment Setup
 Create a virtual environment using python or conda:<br/>
 Using Linux with python:

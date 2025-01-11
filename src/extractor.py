@@ -619,6 +619,7 @@ class relationExtractor:
                 ground_truth: list[str], 
                 data: list[list[str]] | dict[str, list[str]],
                 metrics: list, 
+                print_results: bool = False
                 ) -> EvaluationResult:
                 # ) -> list[SingleTurnSample]:
         ''' 
@@ -631,9 +632,10 @@ class relationExtractor:
             ground_truth (list): ground truth concepts 
             data (list[list[str]] | dict[str, list[str]]): data given to function that identifies terms, concepts, or outcomes
             metrics (list): list of metrics to use for evaluation
+            print_results (bool, default False): if True, prints results to screen
 
         Returns:
-            list[SingleTurnSample]: list of samples used for evaluation  
+            EvaluationResult: evaluation results 
         '''      
         samples = []
         if isinstance(data, dict):
@@ -666,9 +668,7 @@ class relationExtractor:
             ))
 
         # dataset = EvaluationDataset(test_cases = samples)
-
-        result = ev(samples, metrics)
-
+        result = ev(samples, metrics, print_results = print_results)
         return result
 
 

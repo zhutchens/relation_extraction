@@ -1,35 +1,49 @@
 import sys
-if len(sys.argv) <= 5 or len(sys.argv) >= 7:
-    print('usage: <openai_model> <openai mode temperature> <sentence transformer model> <which_textbook> <what_to_test> <num_to_generate>')
-    print('Options for which textbook: dsa_6114, cs_3190, dsa_2214')
-    print('Options for what_to_test: concepts, outcomes, key_terms')
-    print(f'num_to_generate: number of concepts, outcomes, or key_terms to generate for testing')
+if len(sys.argv) <= 8 or len(sys.argv) >= 10:
+    print('usage: <openai_model> <openai_model_temperature> <sentence_transformer_model> <which_textbook> <which_chapters> <what_to_test> <num_to_generate> <threshold>')
+    # print('Options for which textbook: dsa_6114, cs_3190, dsa_2214')
+    # print('usage for which_chapters: which chapters to evaluate in the textbook, e.g., 1,2,3,4,5')
+    # print('Options for what_to_test: concepts, outcomes, key_terms')
+    # print(f'num_to_generate: number of concepts, outcomes, or key_terms to generate for testing')
+    # print()
+    print('---Argument explanations---')
+    print('\topenai_model: openai model to use')
+    print('\topenai_model_temperature: temperature to use with openai model')
+    print('\tsentence_transformer_model: sentence transformer model to use for embeddings')
+    print('\twhich textbook to use for evaluation, options: dsa_2214, dsa_6114, cs_3190')
+    print('\twhich_chapters: a selected range of chapters to use for evaluation (ex. 1,2,3,4 or 6,7,8,9,10')
+    print('\twhat_to_test: what to test for evaluation from the following: concepts, outcomes, key_terms')
+    print('\tnum_generated: number of generated concepts, outcomes, or key_terms to get')
+    print('\tthreshold: threshold number for test case to pass (0.0 through 1.0)')
+
     sys.exit()
 
 openai_model = sys.argv[1]
-temp = sys.argv[2]
+temp = float(sys.argv[2])
 st_model = sys.argv[3]
 
 textbook = sys.argv[4]
 if textbook != 'dsa_6114' and textbook != 'cs_3190' and textbook != 'dsa_2214':
     print('invalid textbook arg. use dsa_2214, dsa_6114, or cs_3190')
     sys.exit()
+which_chapters = [int(string) for string in sys.argv[5].split(',')]
 
-testing = sys.argv[5]
+testing = sys.argv[6]
 if testing != 'concepts' and testing != 'outcomes' and testing != 'outcomes':
     print('invalid what_to_test arg. use concepts, outcomes, or key_terms')
     sys.exit()
 
-num_generated = int(sys.argv[6])
+
+num_generated = int(sys.argv[7])
+threshold = float(sys.argv[8])
 
 from src.extractor import relationExtractor
 from dotenv import load_dotenv
 from os import getenv, environ
-import pytest
-from deepeval import assert_test
 from deepeval.metrics import AnswerRelevancyMetric, ContextualPrecisionMetric, ContextualRecallMetric, FaithfulnessMetric
-from deepeval.test_case import LLMTestCase
-
+import pandas as pd
+import os
+        
 load_dotenv()
 link = getenv(textbook) # Testing 2214 data structures textbook here
 token = getenv('OPENAI_API_KEY')
@@ -120,7 +134,8 @@ elif textbook == 'cs_3190':
     'Cascading'
 ]
 
-CHUNK_SIZE = 3000
+chapters = chapters[which_chapters[0]:which_chapters[-1] + 1]
+CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
 
 extractor = relationExtractor(link, 
@@ -132,34 +147,66 @@ extractor = relationExtractor(link,
                             'DocumentEmbeddings', 
                             '2214_embeddings',
                             reset = True,
-                            openai_model = sys.argv[0],
-                            st_model = sys.argv[2],
-                            temp = sys.argv[1])
-
+                            openai_model = openai_model,
+                            st_model = st_model,
+                            temp = temp)
 
 if testing == 'concepts':
-    concepts, retrieved = extractor.identify_concepts(num_generated)
+    generated, retrieved = extractor.identify_concepts(num_generated)
 elif testing == 'outcomes':
-    outcomes, retrieved = extractor.identify_outcomes(num_generated)
+    generated, retrieved = extractor.identify_outcomes(num_generated)
 else:
-    terms, retrieved = extractor.identify_key_terms(num_generated)
+    generated, retrieved = extractor.identify_key_terms(num_generated)
 
+data = pd.read_csv('data/sorting.csv')
+data.columns = ['concept', 'outcome']
 
-def test_answer_relevancy():
-    pass
+if 'testing' == 'concepts' or testing == 'key_terms':
+    concept_data = data['concept'].tolist()
+    actual = []
+    for string in concept_data:
+        words = string.split('->')
+        for word in words:
+            if word not in actual:
+                actual.append(word)
 
+    actual = [' '.join(actual)] * 4
 
-def test_contextual_precision():
-    pass
+else:
+    outcome_data = data['outcome'].tolist()
+    actual = []
+    for string in outcome_data:
+        words = string.split(';')
+        for s in words:
+            if s not in actual:
+                actual.append(s)
 
+    actual = [' '.join(actual)] * 4
 
-def test_contextual_recall():
-    pass
+metrics = [AnswerRelevancyMetric(), FaithfulnessMetric(), ContextualPrecisionMetric(), ContextualRecallMetric()]
+results = extractor.evaluate(testing, num_generated, generated, actual, retrieved, metrics = metrics).test_results
 
+if not os.path.exists('./results'):
+    os.mkdir('./results/')
+    os.chdir('./results/')
+else:
+    os.chdir('./results/')
 
-def test_faithfulness():
-    pass
+with open(f'results_{st_model}_{testing}.txt', 'w') as f:
+    f.write(f'MODEL: {extractor.openai_model}\n')
+    f.write(f'SENTENCE TRANSFORMER: {extractor.embedding_model}\n')
+    f.write(f'CHAPTERS TESTED: {extractor.chapters}\n')
+    f.write('\n')
 
-
-
+    for r in results:
+        data = r.metrics_data
+        query = r.input
+        output = r.actual_output
+        for metric in data:
+            f.write(f'{metric.name} ---> SCORE: {metric.score} ---> {"FAILURE" if metric.score < threshold else "SUCCESS"}\n')
+            f.write(f'REASON: {metric.reason}\n')
+            f.write(f'QUERY: {query}\n')
+            f.write(f'OUTPUT: {output}\n')
+        f.write('\n')
+    
 
