@@ -1,0 +1,357 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        
+            <script>function neighbourhoodHighlight(params) {
+  // console.log("in nieghbourhoodhighlight");
+  allNodes = nodes.get({ returnType: "Object" });
+  // originalNodes = JSON.parse(JSON.stringify(allNodes));
+  // if something is selected:
+  if (params.nodes.length > 0) {
+    highlightActive = true;
+    var i, j;
+    var selectedNode = params.nodes[0];
+    var degrees = 2;
+
+    // mark all nodes as hard to read.
+    for (let nodeId in allNodes) {
+      // nodeColors[nodeId] = allNodes[nodeId].color;
+      allNodes[nodeId].color = "rgba(200,200,200,0.5)";
+      if (allNodes[nodeId].hiddenLabel === undefined) {
+        allNodes[nodeId].hiddenLabel = allNodes[nodeId].label;
+        allNodes[nodeId].label = undefined;
+      }
+    }
+    var connectedNodes = network.getConnectedNodes(selectedNode);
+    var allConnectedNodes = [];
+
+    // get the second degree nodes
+    for (i = 1; i < degrees; i++) {
+      for (j = 0; j < connectedNodes.length; j++) {
+        allConnectedNodes = allConnectedNodes.concat(
+          network.getConnectedNodes(connectedNodes[j])
+        );
+      }
+    }
+
+    // all second degree nodes get a different color and their label back
+    for (i = 0; i < allConnectedNodes.length; i++) {
+      // allNodes[allConnectedNodes[i]].color = "pink";
+      allNodes[allConnectedNodes[i]].color = "rgba(150,150,150,0.75)";
+      if (allNodes[allConnectedNodes[i]].hiddenLabel !== undefined) {
+        allNodes[allConnectedNodes[i]].label =
+          allNodes[allConnectedNodes[i]].hiddenLabel;
+        allNodes[allConnectedNodes[i]].hiddenLabel = undefined;
+      }
+    }
+
+    // all first degree nodes get their own color and their label back
+    for (i = 0; i < connectedNodes.length; i++) {
+      // allNodes[connectedNodes[i]].color = undefined;
+      allNodes[connectedNodes[i]].color = nodeColors[connectedNodes[i]];
+      if (allNodes[connectedNodes[i]].hiddenLabel !== undefined) {
+        allNodes[connectedNodes[i]].label =
+          allNodes[connectedNodes[i]].hiddenLabel;
+        allNodes[connectedNodes[i]].hiddenLabel = undefined;
+      }
+    }
+
+    // the main node gets its own color and its label back.
+    // allNodes[selectedNode].color = undefined;
+    allNodes[selectedNode].color = nodeColors[selectedNode];
+    if (allNodes[selectedNode].hiddenLabel !== undefined) {
+      allNodes[selectedNode].label = allNodes[selectedNode].hiddenLabel;
+      allNodes[selectedNode].hiddenLabel = undefined;
+    }
+  } else if (highlightActive === true) {
+    // console.log("highlightActive was true");
+    // reset all nodes
+    for (let nodeId in allNodes) {
+      // allNodes[nodeId].color = "purple";
+      allNodes[nodeId].color = nodeColors[nodeId];
+      // delete allNodes[nodeId].color;
+      if (allNodes[nodeId].hiddenLabel !== undefined) {
+        allNodes[nodeId].label = allNodes[nodeId].hiddenLabel;
+        allNodes[nodeId].hiddenLabel = undefined;
+      }
+    }
+    highlightActive = false;
+  }
+
+  // transform the object into an array
+  var updateArray = [];
+  if (params.nodes.length > 0) {
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        // console.log(allNodes[nodeId]);
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  } else {
+    // console.log("Nothing was selected");
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        // console.log(allNodes[nodeId]);
+        // allNodes[nodeId].color = {};
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  }
+}
+
+function filterHighlight(params) {
+  allNodes = nodes.get({ returnType: "Object" });
+  // if something is selected:
+  if (params.nodes.length > 0) {
+    filterActive = true;
+    let selectedNodes = params.nodes;
+
+    // hiding all nodes and saving the label
+    for (let nodeId in allNodes) {
+      allNodes[nodeId].hidden = true;
+      if (allNodes[nodeId].savedLabel === undefined) {
+        allNodes[nodeId].savedLabel = allNodes[nodeId].label;
+        allNodes[nodeId].label = undefined;
+      }
+    }
+
+    for (let i=0; i < selectedNodes.length; i++) {
+      allNodes[selectedNodes[i]].hidden = false;
+      if (allNodes[selectedNodes[i]].savedLabel !== undefined) {
+        allNodes[selectedNodes[i]].label = allNodes[selectedNodes[i]].savedLabel;
+        allNodes[selectedNodes[i]].savedLabel = undefined;
+      }
+    }
+
+  } else if (filterActive === true) {
+    // reset all nodes
+    for (let nodeId in allNodes) {
+      allNodes[nodeId].hidden = false;
+      if (allNodes[nodeId].savedLabel !== undefined) {
+        allNodes[nodeId].label = allNodes[nodeId].savedLabel;
+        allNodes[nodeId].savedLabel = undefined;
+      }
+    }
+    filterActive = false;
+  }
+
+  // transform the object into an array
+  var updateArray = [];
+  if (params.nodes.length > 0) {
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  } else {
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  }
+}
+
+function selectNode(nodes) {
+  network.selectNodes(nodes);
+  neighbourhoodHighlight({ nodes: nodes });
+  return nodes;
+}
+
+function selectNodes(nodes) {
+  network.selectNodes(nodes);
+  filterHighlight({nodes: nodes});
+  return nodes;
+}
+
+function highlightFilter(filter) {
+  let selectedNodes = []
+  let selectedProp = filter['property']
+  if (filter['item'] === 'node') {
+    let allNodes = nodes.get({ returnType: "Object" });
+    for (let nodeId in allNodes) {
+      if (allNodes[nodeId][selectedProp] && filter['value'].includes((allNodes[nodeId][selectedProp]).toString())) {
+        selectedNodes.push(nodeId)
+      }
+    }
+  }
+  else if (filter['item'] === 'edge'){
+    let allEdges = edges.get({returnType: 'object'});
+    // check if the selected property exists for selected edge and select the nodes connected to the edge
+    for (let edge in allEdges) {
+      if (allEdges[edge][selectedProp] && filter['value'].includes((allEdges[edge][selectedProp]).toString())) {
+        selectedNodes.push(allEdges[edge]['from'])
+        selectedNodes.push(allEdges[edge]['to'])
+      }
+    }
+  }
+  selectNodes(selectedNodes)
+}</script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" integrity="sha512-WgxfT5LWjfszlPHXRmBWHkV2eceiWTOBvrKCNbdgDYTHrT2AeLCGbF4sZlZw3UMN3WtL0tGUoIAKsu8mllg/XA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js" integrity="sha512-LnvoEWDFrqGHlHmDD2101OrLcbsfkrzoSpvtSQtxK3RMnRV0eOkhhBN2dXHKRrUU8p2DGRTk35n4O8nWSVe1mQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+            
+            
+            
+            
+            
+            
+
+        
+<center>
+<h1></h1>
+</center>
+
+<!-- <link rel="stylesheet" href="../node_modules/vis/dist/vis.min.css" type="text/css" />
+<script type="text/javascript" src="../node_modules/vis/dist/vis.js"> </script>-->
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6"
+          crossorigin="anonymous"
+        />
+        <script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-JEW9xMcG8R+pH31jmWH6WWP0WintQrMb4s7ZOdauHnUtxwoG2vI5DkLtS3qm9Ekf"
+          crossorigin="anonymous"
+        ></script>
+
+
+        <center>
+          <h1></h1>
+        </center>
+        <style type="text/css">
+
+             #mynetwork {
+                 width: 100%;
+                 height: 600px;
+                 background-color: #ffffff;
+                 border: 1px solid lightgray;
+                 position: relative;
+                 float: left;
+             }
+
+             
+
+             
+
+             
+        </style>
+    </head>
+
+
+    <body>
+        <div class="card" style="width: 100%">
+            
+            
+            <div id="mynetwork" class="card-body"></div>
+        </div>
+
+        
+        
+
+        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+
+              
+
+              
+
+              // This method is responsible for drawing the graph, returns the drawn network
+              function drawGraph() {
+                  var container = document.getElementById('mynetwork');
+
+                  
+
+                  // parsing and collecting nodes and edges from the python
+                  nodes = new vis.DataSet([{"color": "red", "id": 0, "label": "Internal Sorting", "shape": "dot"}, {"color": "red", "id": 1, "label": "File Processing and External Sorting", "shape": "dot"}, {"color": "red", "id": 2, "label": "Searching", "shape": "dot"}, {"color": "red", "id": 3, "label": "Indexing", "shape": "dot"}, {"color": "green", "id": 4, "label": "Internal Sorting concepts", "shape": "dot", "title": "Here are the five most important learning concepts related to the chapter on Internal Sorting, particularly focusing on the stability of sorting algorithms: 1. **Definition of Stability in Sorting Algorithms**:    - A sorting algorithm is considered stable if it preserves the relative order of records with equal keys. This means that if two elements have the same key, the one that appears first in the input will also appear first in the output after sorting. Understanding this concept is crucial for selecting the appropriate sorting algorithm based on the requirements of the application. 2. **Classification of Sorting Algorithms by Stability**:    - Different sorting algorithms can be classified as stable or unstable. For example:      - **Stable**: Insertion Sort, Bubble Sort, Merge Sort, and Radix Sort.      - **Unstable**: Selection Sort, Quick Sort, Heap Sort, and Shell Sort.    - Recognizing which algorithms are stable helps in choosing the right one for scenarios where the order of equal elements matters. 3. **Reasons for Stability or Instability**:    - The stability of a sorting algorithm often depends on its implementation. For instance:      - **Insertion Sort** is stable because it only swaps elements when necessary, preserving the order of equal elements.      - **Quick Sort** is typically unstable because it can swap elements in a way that disrupts the original order of equal keys.    - Understanding the underlying mechanics of each algorithm helps in determining their stability. 4. **Modifications to Achieve Stability**:    - Many unstable sorting algorithms can be modified to become stable with minor changes. For example:      - In **Quick Sort**, one could use a stable partitioning method that ensures equal elements maintain their relative order.      - In **Heap Sort**, a stable version can be implemented by using a secondary key to maintain the order of equal elements.    - Learning how to modify algorithms for stability is important for practical applications. 5. **Performance Considerations**:    - The choice of sorting algorithm can significantly affect performance, which is influenced by the nature of the input data. For example, while Quick Sort is generally faster on average, its performance can degrade with certain types of input. Conversely, Merge Sort is stable and performs consistently well regardless of input. Understanding these performance characteristics is essential for selecting the right algorithm based on specific use cases. These concepts provide a foundational understanding of sorting algorithms, their stability, and the implications of these characteristics in practical applications."}, {"color": "blue", "id": 5, "label": "Internal Sorting terms", "shape": "dot", "title": "Average-case analysis,   Comparison-based sorting,   Worst-case analysis,   Sorting algorithms,   Binary tree representation"}, {"color": "purple", "id": 6, "label": "Internal Sorting outcomes", "shape": "dot", "title": "Based on the provided context regarding internal sorting and external sorting, here are five important learning outcomes for the chapter on Internal Sorting: 1. **Understanding the Difference Between Internal and External Sorting**: Students should be able to distinguish between internal sorting methods, which operate on data that fits in main memory, and external sorting methods, which are designed for data that resides in external memory. This understanding is crucial for selecting the appropriate sorting algorithm based on the size of the data set. 2. **Application of Sorting Algorithms in Real-World Scenarios**: Learners should recognize the significance of sorting algorithms in practical applications, such as payroll processing and managing large business databases. This outcome emphasizes the relevance of sorting in everyday computing tasks and data management. 3. **Implementation of Heapsort**: Students should be able to implement the Heapsort algorithm in Java, understanding its structure and functionality. This includes grasping how the max-heap is constructed and how the sorting process is executed through the removal of the maximum element. 4. **Performance Analysis of Sorting Algorithms**: Learners should be able to analyze the time complexity of various sorting algorithms, including Heapsort, and understand the implications of these complexities in terms of efficiency and performance, especially when dealing with large datasets. 5. **Optimization Techniques for Sorting**: Students should explore the historical context of sorting algorithm design, including how optimizations were made for specific hardware configurations. This outcome encourages critical thinking about how sorting algorithms can be adapted or improved based on technological advancements and specific use cases. These learning outcomes provide a comprehensive framework for understanding the principles and applications of internal sorting, particularly in the context of modern computing environments."}, {"color": "green", "id": 7, "label": "File Processing and External Sorting concepts", "shape": "dot", "title": "Based on the provided context regarding file processing and external sorting, particularly focusing on the external mergesort algorithm, here are the five most important learning concepts: 1. **External Mergesort Algorithm**: Understand the fundamental structure of the external mergesort algorithm, which involves dividing input records into runs, merging these runs, and writing them to output files. The process of alternating between two output files and doubling the run length with each pass is crucial for efficient external sorting. 2. **Run Creation and Merging**: Grasp the concept of \"runs\" in external sorting, where a run is a sorted sublist of records. The merging process involves combining these runs in a systematic way, starting from smaller runs and progressively merging them into larger sorted runs. This is essential for understanding how external sorting scales with larger datasets. 3. **Memory Management and Block Access**: Recognize the limitations of memory when dealing with external sorting. The algorithm typically uses only a limited amount of main memory (two blocks at a time), which necessitates efficient management of data access patterns. Understanding how random access impacts performance is key to optimizing external sorting. 4. **Replacement Selection Technique**: Learn about the replacement selection method for creating initial runs. This technique allows for more efficient use of memory by maintaining a heap of records and selecting the next record to form a run, which helps in minimizing the number of runs that need to be merged later. 5. **Passes and Efficiency**: Comprehend the significance of multiple passes in the external mergesort process. Each pass merges pairs of runs, and the efficiency of the algorithm is influenced by the number of passes required to sort the entire dataset. Understanding how the size of runs increases with each pass and the implications for I/O operations is critical for optimizing performance. These concepts provide a foundational understanding of file processing and external sorting, particularly in the context of the external mergesort algorithm."}, {"color": "blue", "id": 8, "label": "File Processing and External Sorting terms", "shape": "dot", "title": "1. External Sorting, 2. Mergesort Algorithm, 3. Runs, 4. Disk I/O, 5. Sequential Passes"}, {"color": "purple", "id": 9, "label": "File Processing and External Sorting outcomes", "shape": "dot", "title": "Based on the provided context regarding file processing and external sorting, here are five important learning outcomes for the chapter: 1. **Understanding External Sorting Fundamentals**: Students should be able to explain the concept of external sorting, including the necessity of sorting data that cannot fit into main memory and the implications of disk I/O operations on performance. 2. **Efficiency in Disk Access**: Learners should recognize the primary goal of external sorting algorithms, which is to minimize the number of disk reads and writes. They should understand how reducing disk access can lead to improved performance and the trade-offs involved with CPU processing. 3. **Application of Mergesort in External Sorting**: Students should be able to describe how the external mergesort algorithm operates, including the process of merging sorted sublists (or runs) and the sequential passes required to achieve a fully sorted file. 4. **Memory Management and Block Structure**: Learners should understand the importance of fixed-size blocks in external sorting, including how data records are organized and accessed from disk, and how this structure influences the design of sorting algorithms. 5. **Comparison with Internal Sorting**: Students should be able to differentiate between external and internal sorting methods, recognizing the unique challenges and strategies associated with sorting large datasets stored in external memory compared to those that fit in main memory.  These outcomes will help students grasp the complexities and methodologies involved in efficiently sorting large collections of records in external memory environments."}, {"color": "green", "id": 10, "label": "Searching concepts", "shape": "dot", "title": "Based on the provided context regarding searching algorithms, particularly sequential search and binary search, here are the five most important learning concepts for the chapter on Searching: 1. **Algorithm Efficiency**: Understanding the efficiency of different searching algorithms is crucial. Sequential search has a time complexity of \u03b8(n) in both average and worst cases, while binary search has a time complexity of \u03b8(log n) but requires the data to be sorted. This highlights the importance of algorithm choice based on the context of the data. 2. **Data Structure Requirements**: Binary search requires that the array be sorted in order (from lowest to highest) to function correctly, whereas sequential search does not have this requirement. This concept emphasizes the importance of data organization and its impact on the choice of searching algorithm. 3. **Constant Factors in Running Time**: The context mentions that the constant factor for binary search is greater than that for sequential search. This concept illustrates that while asymptotic analysis (big O, theta, etc.) is important, constant factors can significantly affect performance in practical scenarios, especially for smaller datasets. 4. **Worst-case vs. Average-case Analysis**: The chapter discusses the difference between average-case and worst-case scenarios for both searching algorithms. Understanding these concepts helps in evaluating the performance of algorithms under different conditions and making informed decisions about which algorithm to use. 5. **Search Position Calculation**: The process of calculating the next search position in binary search is more complex than simply incrementing the current position in sequential search. This concept highlights the trade-offs between the simplicity of implementation and the efficiency of the algorithm, which is essential for algorithm design and analysis. These concepts provide a foundational understanding of searching algorithms, their efficiencies, and the considerations that influence their use in different scenarios."}, {"color": "blue", "id": 11, "label": "Searching terms", "shape": "dot", "title": "Binary Search,   Search Algorithm Comparison,   Time Complexity,   Sequential Search,   Recurrence Relation"}, {"color": "purple", "id": 12, "label": "Searching outcomes", "shape": "dot", "title": "Based on the provided context regarding searching algorithms, particularly focusing on sequential and binary search, here are five important learning outcomes for the chapter on Searching: 1. **Understanding Time Complexity**: Students should be able to differentiate between the time complexities of sequential search (O(n)) and binary search (O(log n)). They should understand how these complexities affect the efficiency of each algorithm, especially in relation to the size of the dataset. 2. **Requirements for Binary Search**: Learners should recognize that binary search requires the dataset to be sorted in ascending order. They should understand the implications of this requirement, including the potential need for an initial sorting step and the conditions under which binary search is more efficient than sequential search. 3. **Cost of Sorting**: Students should be able to evaluate the trade-offs involved in using binary search, particularly the cost of sorting an unsorted list. They should understand that binary search is only advantageous when multiple searches (at least O(log n)) are performed on the sorted list. 4. **Data Structure Considerations**: Learners should understand the importance of using appropriate data structures that support random access for binary search. They should be able to identify which data structures (like arrays) are suitable for implementing binary search and why. 5. **Contextual Search Strategies**: Students should be able to analyze different search strategies based on the context of the problem. They should learn when it might be more beneficial to use linear search, especially in cases where the search distribution is extreme or when the frequency of search requests is known in advance. These outcomes will help students grasp the fundamental concepts of searching algorithms, their efficiencies, and the contexts in which they are best applied."}, {"color": "green", "id": 13, "label": "Indexing concepts", "shape": "dot", "title": "Based on the provided context regarding indexing, here are the five most important learning concepts for the chapter: 1. **Tree Indexing**: Understanding the concept of tree indexing is crucial, as it is a primary method for organizing large databases that require efficient record insertion, deletion, and key range searches. This includes the advantages of using tree structures over simpler indexing methods. 2. **ISAM (Indexed Sequential Access Method)**: This method is introduced as an early approach to managing databases that need to support dynamic operations like insertion and deletion. Recognizing its limitations helps to appreciate the evolution and necessity of more advanced indexing techniques, particularly tree-based structures. 3. **2-3 Trees and B-Trees**: The chapter discusses 2-3 trees as a balanced tree structure that serves as a foundational concept for understanding B-trees. B-trees are essential for indexing in large disk-based databases, and knowing their properties and operations is vital for effective database management. 4. **Performance of Indexing Methods**: The chapter highlights the performance implications of different indexing methods, such as sorted lists versus tree structures. Understanding how these methods perform during insertions, deletions, and searches is key to selecting the appropriate indexing strategy for a given application. 5. **Key Range Searches**: The ability to perform key range searches efficiently is a significant aspect of indexing. This concept is essential for understanding how tree structures can facilitate quick access to a range of records, which is a common requirement in database queries. These concepts provide a foundational understanding of indexing in databases, emphasizing the importance of tree structures and their operational efficiencies."}, {"color": "blue", "id": 14, "label": "Indexing terms", "shape": "dot", "title": "Indexing techniques,   Primary index,   Secondary index,   Tree index,   Hashing"}, {"color": "purple", "id": 15, "label": "Indexing outcomes", "shape": "dot", "title": "Based on the provided context regarding indexing, bucket hashing, and B-trees, here are five important learning outcomes for the chapter on Indexing: 1. **Understanding Bucket Hashing**: Students should be able to explain the concept of bucket hashing, including how it organizes hash table slots into buckets and the advantages of this approach in managing collisions and improving data retrieval efficiency. 2. **Implementation of Hash Functions**: Learners should be able to implement and analyze hash functions, such as \\( h(k) = k \\mod b \\), and understand how these functions determine the placement of data within a hash table, including the implications of choosing different hash functions on performance. 3. **Performance of B-Trees and Variants**: Students should gain insights into the structure and performance characteristics of B-trees and their variants, particularly the B+ tree and B* tree, including how they manage data storage, node splitting, and merging to optimize space utilization and access times. 4. **Space Utilization and Efficiency**: Learners should understand the importance of space utilization in data structures, particularly in B-trees, and how maintaining fuller nodes can lead to more efficient processing by reducing the number of disk blocks read into memory. 5. **Comparative Analysis of Indexing Techniques**: Students should be able to compare and contrast different indexing techniques, including bucket hashing and B-trees, in terms of their strengths, weaknesses, and appropriate use cases in database management and data retrieval scenarios. These outcomes will help students grasp the fundamental concepts of indexing and its practical applications in computer science and data management."}]);
+                  edges = new vis.DataSet([{"from": 1, "label": "requires", "to": 0}, {"from": 2, "label": "requires", "to": 1}, {"from": 3, "label": "requires", "to": 1}, {"from": 3, "label": "requires", "to": 2}, {"from": 4, "label": "covers", "to": 0}, {"from": 5, "label": "contains key terms", "to": 0}, {"from": 6, "label": "results with knowledge in", "to": 0}, {"from": 7, "label": "covers", "to": 1}, {"from": 8, "label": "contains key terms", "to": 1}, {"from": 9, "label": "results with knowledge in", "to": 1}, {"from": 10, "label": "covers", "to": 2}, {"from": 11, "label": "contains key terms", "to": 2}, {"from": 12, "label": "results with knowledge in", "to": 2}, {"from": 13, "label": "covers", "to": 3}, {"from": 14, "label": "contains key terms", "to": 3}, {"from": 15, "label": "results with knowledge in", "to": 3}]);
+
+                  nodeColors = {};
+                  allNodes = nodes.get({ returnType: "Object" });
+                  for (nodeId in allNodes) {
+                    nodeColors[nodeId] = allNodes[nodeId].color;
+                  }
+                  allEdges = edges.get({ returnType: "Object" });
+                  // adding nodes and edges to the graph
+                  data = {nodes: nodes, edges: edges};
+
+                  var options = {
+    "configure": {
+        "enabled": false
+    },
+    "edges": {
+        "color": {
+            "inherit": true
+        },
+        "smooth": {
+            "enabled": true,
+            "type": "dynamic"
+        }
+    },
+    "interaction": {
+        "dragNodes": true,
+        "hideEdgesOnDrag": false,
+        "hideNodesOnDrag": false
+    },
+    "physics": {
+        "enabled": true,
+        "repulsion": {
+            "centralGravity": 0.2,
+            "damping": 0.09,
+            "nodeDistance": 100,
+            "springConstant": 0.05,
+            "springLength": 250
+        },
+        "solver": "repulsion",
+        "stabilization": {
+            "enabled": true,
+            "fit": true,
+            "iterations": 1000,
+            "onlyDynamicEdges": false,
+            "updateInterval": 50
+        }
+    }
+};
+
+                  
+
+
+                  
+
+                  network = new vis.Network(container, data, options);
+
+                  
+
+                  
+
+                  
+
+
+                  
+
+                  return network;
+
+              }
+              drawGraph();
+        </script>
+    </body>
+</html>
