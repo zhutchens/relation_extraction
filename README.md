@@ -1,5 +1,5 @@
 # Overview
-This is an ongoing research project to develop structured knowledge from text data. Current supported features include retrieving concepts, retrieving outcomes, retrieving key terms, building a terminology from key terms, summarization, retrieval of main topics, dependencies between sections/chapters of text, and some visualization using plain graphs, hypergraphs, and interactive graphs. Evaluation is also supported using deepeval with ground truth values and retrieved contexts. Future features include knowledge graph creation, deeper visualization, and custom language model integration. 
+This is an ongoing research project to develop structured knowledge from text data. Current supported features include retrieving concepts, retrieving outcomes, retrieving key terms, building a terminology from key terms, summarization, retrieval of main topics, dependencies between sections/chapters of text, and some visualization using plain graphs, hypergraphs, knowledge graphs, and interactive graphs. Evaluation is also supported using deepeval with ground truth values and retrieved contexts. 
 
 The substance of the project is located in the src directory. The experiments directory, playground.ipynb, and testing.ipynb will not work without setting up an env file, so it is suggested to create your own work file. 
 
