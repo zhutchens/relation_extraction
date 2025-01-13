@@ -720,7 +720,7 @@ class relationExtractor:
         return list(terminology)
 
 
-    def build_knowledge_graph(self, dependencies: dict[str, list[str]], concepts: list[list[str]], outcomes: list[list[str]], key_terms: list[list[str]]) -> nx.Graph:
+    def build_knowledge_graph(self, dependencies: dict[str, list[str]], concepts: list[list[str]], outcomes: list[list[str]], key_terms: list[list[str]]) -> Network:
         '''
         Builds a knowledge using learning concepts, outcomes, and key terms
 
@@ -731,7 +731,7 @@ class relationExtractor:
             key_terms (list[list[str]]): key_terms for chapters
         
         Returns:
-            nx.Graph: networkx object 
+            Network: pyvis network
         '''
         kg = Network(notebook = True, cdn_resources='remote')
         
@@ -773,27 +773,19 @@ class relationExtractor:
         return kg
 
     
-    def draw_knowledge_graph(self, kg: nx.Graph, return_html: bool = False) -> None:
+    def draw_knowledge_graph(self, kg: Network) -> None:
         '''
         Takes knowledge graph and turns it into an html file that can be used to visualize a knowledge graph
 
         Args:
             kg (nx.Graph): networkx graph to draw
-            return_html (bool, default False): if True, does not display the graph and returns it as an html file. Saves it into a visualizations folder as kg.html
 
         Returns:
             None
         '''
-        # if not return_html:
-        #     widget = Sigma(kg, node_color = 'color', default_edge_type = 'curve', node_border_color_from = 'node')
-        #     display(widget)
-        #     return
-
         if not os.path.exists('./visualizations/'):
             os.mkdir('./visualizations/')
 
-        # Sigma.write_html(Sigma(kg, node_color = "tag", node_label_size = kg.degree, node_size = kg.degree), './visualizations/kg.html')
-        # kg.show_buttons(filter_=["physics"])
         kg.repulsion(spring_length = 250)
         display(kg.show('./visualizations/kg.html'))
 
