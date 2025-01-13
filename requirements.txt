@@ -45,12 +45,12 @@ fonttools==4.53.1
 frozenlist==1.4.1
 fsspec==2024.9.0
 gensim==4.3.2
-googleapis-common-protos
+googleapis-common-protos==1.66.0
 graphviz==0.20.3
 greenlet==3.0.3
-grpc-google-iam-v1
-grpcio
-grpcio-status
+grpc-google-iam-v1==0.14.0
+grpcio==1.60.1
+grpcio-status==1.68.1
 h11==0.14.0
 httpcore==1.0.5
 httplib2==0.22.0
@@ -63,8 +63,10 @@ igraph==0.11.6
 importlib_metadata==8.4.0
 iniconfig==2.0.0
 ipykernel==6.29.5
+ipysigma==0.24.4
 ipython==8.26.0
 ipython-genutils==0.2.0
+ipywidgets==8.1.5
 isodate==0.6.1
 jedi==0.19.1
 Jinja2==3.1.5
@@ -77,6 +79,7 @@ jsonschema==4.23.0
 jsonschema-specifications==2024.10.1
 jupyter_client==8.6.2
 jupyter_core==5.7.2
+jupyterlab_widgets==3.0.13
 kiwisolver==1.4.5
 langchain==0.3.13
 langchain-community==0.3.13
@@ -105,7 +108,7 @@ multiprocess==0.70.16
 murmurhash==1.0.11
 mypy-extensions==1.0.0
 narwhals==1.19.1
-nbformat==4.2.0
+nbformat==5.10.4
 nest-asyncio==1.6.0
 networkx==3.4.2
 nltk==3.9.1
@@ -123,7 +126,7 @@ nvidia-nccl-cu12==2.21.5
 nvidia-nvjitlink-cu12==12.4.127
 nvidia-nvtx-cu12==12.4.127
 openai==1.58.1
-opentelemetry-api
+opentelemetry-api==1.27.0
 opentelemetry-exporter-otlp-proto-common==1.27.0
 opentelemetry-exporter-otlp-proto-grpc==1.27.0
 opentelemetry-proto==1.27.0
@@ -148,7 +151,7 @@ presidio_anonymizer==2.2.356
 prompt_toolkit==3.0.47
 propcache==0.2.1
 proto-plus==1.25.0
-protobuf
+protobuf==4.25.5
 psutil==6.0.0
 ptyprocess==0.7.0
 pure-eval==0.2.2
@@ -230,6 +233,7 @@ urllib3==2.2.2
 wasabi==1.1.3
 wcwidth==0.2.13
 weasel==0.4.1
+widgetsnbextension==4.0.13
 wrapt==1.16.0
 xxhash==3.5.0
 yarl==1.18.3
