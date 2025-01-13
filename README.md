@@ -7,6 +7,15 @@ To use the main class, relationExtractor, you will need a MongoDB and OpenAI api
 
 Bulk testing is also available with run_test.sh and test_script.py, but you will need to edit them to use your own data. In the future they may become an automatic test, but for the foreseeable future it will stay this way. 
 
+# Dockerfile instructions
+The dockerfile is available to be built. It uses Ubuntu 22.04 and launches a jupyter notebook with the project files. However, you must setup and use your own OpenAI and MongoDB API keys. Additonally, you must have a MongoDB Atlas database and collection. Once these are ready, build and launch docker with the following commands:
+```
+sudo docker build -t project .
+```
+```
+sudo docker run -p 8888:8888 project
+```
+Here, I have used project as the docker image name. You can replace this and use whatever you like. 
 # Environment Setup
 Create a virtual environment using python or conda:<br/>
 Using Linux with python:
