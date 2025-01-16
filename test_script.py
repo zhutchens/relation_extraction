@@ -41,6 +41,7 @@ from src.extractor import relationExtractor
 from dotenv import load_dotenv
 from os import getenv, environ
 from deepeval.metrics import AnswerRelevancyMetric, ContextualPrecisionMetric, ContextualRecallMetric, FaithfulnessMetric
+from custom_metrics.SemanticSimilarity import SemanticSimilarity
 import pandas as pd
 import os
         
@@ -185,8 +186,10 @@ else:
 
     actual = [' '.join(actual)] * 4
 
-metrics = [AnswerRelevancyMetric(), FaithfulnessMetric(), ContextualPrecisionMetric(), ContextualRecallMetric()]
-results = extractor.evaluate(testing, num_generated, generated, actual, retrieved, metrics = metrics).test_results
+# print(f'Instantiating Semantic Similarity in metrics list with sentence transformer ' + extractor.embedding_model)
+metrics = [AnswerRelevancyMetric(), FaithfulnessMetric(), ContextualPrecisionMetric(), ContextualRecallMetric(), SemanticSimilarity(st_model = extractor.embedding_model)]
+# print('Successfully instantiated Semantic Similarity class within metrics list... starting evaluation')
+results = extractor.evaluate(testing, num_generated, generated, actual, retrieved, metrics = metrics)
 
 if not os.path.exists('./results'):
     os.mkdir('./results/')
@@ -202,19 +205,16 @@ with open(f'results_{textbook}_{testing}.txt', 'w') as f:
 
     averages = {}
     for r in results:
-        data = r.metrics_data
-        query = r.input
-        output = r.actual_output
-        for metric in data:
-            if metric.name not in averages.keys():
-                averages[metric.name] = metric.score
-            else:
-                averages[metric.name] += metric.score
+        query = r['input']
+        output = r['output']
+        name = r['name']
+        score = r['score']
+        reason = r['reason']
 
-            f.write(f'{metric.name} ---> SCORE: {metric.score} ---> {"FAILURE" if metric.score < threshold else "SUCCESS"}\n')
-            f.write(f'REASON: {metric.reason}\n')
-            f.write(f'QUERY: {query}\n')
-            f.write(f'OUTPUT: {output}\n')
+        f.write(f'{name} ---> SCORE: {score} ---> {"FAILURE" if score < threshold else "SUCCESS"}\n')
+        f.write(f'REASON: {reason}\n')
+        f.write(f'QUERY: {query}\n')
+        f.write(f'OUTPUT: {output}\n')
         f.write('\n')
 
     for k in averages.keys():

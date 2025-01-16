@@ -10,19 +10,13 @@ import graphlib
 # from ragas import evaluate as ev
 # from ragas import SingleTurnSample
 # from ragas.dataset_schema import EvaluationDataset
-import networkx as nx
-import plotly.express as px
-import plotly.graph_objects as go
 from src.retrieval import RetrievalSystem
 from langchain_core.documents import Document
 from src.utils import rank_docs
-from string import punctuation  
+from string import punctuation
 from concurrent.futures import ThreadPoolExecutor
-from deepeval import evaluate as ev
-# from deepeval.dataset import EvaluationDataset
 from deepeval.test_case import LLMTestCase
-from deepeval.evaluate import EvaluationResult
-from ipysigma import Sigma
+import pymupdf
 
 
 def create_concept_graph_structure(param_list: list) -> dict:
@@ -52,7 +46,7 @@ class relationExtractor:
     
     '''
     def __init__(self, 
-                link: str, 
+                document: str, 
                 token: str, 
                 chapters: list[str], 
                 connection_string: str,
@@ -68,7 +62,7 @@ class relationExtractor:
         Constructor to create a large language model relation extractor class. 
 
         Args:
-            link (str): the web link to generate answers from
+            document (str): the string, web link, or pdf path to get information from
             token (str): OpenAI token
             chapters (list): list of chapter/section names in link
             connection_string (str): connection string to MongoDB 
@@ -80,7 +74,14 @@ class relationExtractor:
             model (str, default gpt-4o-mini): OpenAI model to use 
             temp (int, default 1): temperature to use with OpenAI model
         '''
-        self.link = link
+        if os.path.exists(document):
+            doc = pymupdf(document)
+            doc = ' '.join([page.get_text() for page in doc])
+            doc = doc.replace('\n', ' ')
+            self.document = doc
+        else:
+            self.document = document
+
         self.chapters = chapters
         self.openai_model = openai_model
         self.embedding_model = st_model
@@ -88,7 +89,7 @@ class relationExtractor:
         os.environ['OPENAI_API_KEY'] = token
         self.llm = ChatOpenAI(model = openai_model, max_tokens = None, temperature = temp)
 
-        self.vs = RetrievalSystem(connection_string, self.link, chunk_size, chunk_overlap, db_name, collection_name, st_model, reset)
+        self.vs = RetrievalSystem(connection_string, self.document, chunk_size, chunk_overlap, db_name, collection_name, st_model, reset)
 
     
     def retrieval_pipeline(self, query: str, context: str, num_queries: int = 4, top_n: int = 4) -> list[Document]:
@@ -206,6 +207,8 @@ class relationExtractor:
             words = self.llm.invoke(prompt).content
             terms.append([string for string in words.split('\n') if string != ''])
 
+        self.key_terms = terms
+        self.retrieved_term_context = retrieved
         return terms, retrieved
 
 
@@ -219,7 +222,8 @@ class relationExtractor:
         Returns:
             str: summary of textbook
         '''
-        return self.llm.invoke(f"Please summarize this web page: {self.link}").content
+        self.summarization = self.llm.invoke(f"Please summarize this content: {self.link}").content
+        return self.summarization
 
 
     def create_chapter_dict(self, outcomes: list[str], concepts: list[str]) -> dict[str, tuple[str, str]]:
@@ -283,6 +287,7 @@ class relationExtractor:
                   '''
         main_topics = self.llm.invoke(prompt).content
 
+        self.main_topics = [topic for topic in main_topics.split('\n') if topic != '']
         return [topic for topic in main_topics.split('\n') if topic != '']
     
     
@@ -307,6 +312,7 @@ class relationExtractor:
                     if relation.split(',')[0].strip() != 'No':
                         topic_relations[main_topic_list[i]].append(main_topic_list[j])
 
+        self.main_topic_relationships = topic_relations
         return topic_relations
 
     
@@ -342,6 +348,9 @@ class relationExtractor:
             response = self.llm.invoke(single_prompt).content
 
             outcome_list.append([outcome for outcome in response.split('\n') if outcome != ''])
+
+        self.outcomes = outcome_list
+        self.retrieved_outcome_context = retrieved_contexts
 
         return outcome_list, retrieved_contexts
         
@@ -395,6 +404,9 @@ class relationExtractor:
             current_concept = self.llm.invoke(single_prompt).content
             concept_list.append([concept for concept in current_concept.split('\n') if concept != ''])
 
+        self.concepts = concept_list
+        self.retrieved_concept_context = retrieved_contexts
+
         return concept_list, retrieved_contexts
 
     
@@ -442,7 +454,6 @@ class relationExtractor:
         Returns:
             dict[str, list[str]]: depedencies between chapters as adjacency list
         '''
-
         relation = ''
 
         relations_dict = create_concept_graph_structure(self.chapters)
@@ -456,10 +467,11 @@ class relationExtractor:
                 if relation.split(',')[0].strip() != 'No':
                     relations_dict[self.chapters[j]].append(self.chapters[i])
 
+        self.dependencies = relations_dict
         return relations_dict
 
 
-    def draw_graph(self, concept_graph: dict[str, list[str]]) -> None:
+    def draw_graph(self) -> None:
         '''
         Print a directed graph using the dependency dictionary
 
@@ -469,9 +481,12 @@ class relationExtractor:
         Returns:
             None
         '''
+        if not self.dependencies:
+            raise AttributeError('self.dependencies not found, run identify_dependencies first')
+
         graph = graphviz.Digraph()
 
-        for key, values in concept_graph.items():
+        for key, values in self.dependencies.items():
             graph.node(name = key)
             for value in values:
                 graph.edge(key, value)
@@ -480,83 +495,85 @@ class relationExtractor:
 
 
     # NOTE: I think I might be able to combine these two functions into one
-    def get_assocation_interactive_graph(self, graph: dict[str, tuple[str, str]], associations: dict[str, list[str]]) -> Network:
-        '''
-        Retrieve the interactive graph using the association dictionary. Nodes are chapter names and edges are the associations. Hovering over a node results in displaying that nodes learning outcomes and concepts. The function is not able to automatically display the graph so the .show() method must be called on the return object
+    # def get_assocation_interactive_graph(self, graph: dict[str, tuple[str, str]], associations: dict[str, list[str]]) -> Network:
+    #     '''
+    #     Retrieve the interactive graph using the association dictionary. Nodes are chapter names and edges are the associations. Hovering over a node results in displaying that nodes learning outcomes and concepts. The function is not able to automatically display the graph so the .show() method must be called on the return object
 
-        Args:
-            graph: The dictionary containing chapter names as keys and the values as a tuple containing the concept at index 0 and outcome at index 1. Can be created automatically using the create_chapter_dict function
-            assocations: The dictionary containing the associations between chapters. Can be created automatically using the identify_associations() function
+    #     Args:
+    #         graph: The dictionary containing chapter names as keys and the values as a tuple containing the concept at index 0 and outcome at index 1. Can be created automatically using the create_chapter_dict function
+    #         assocations: The dictionary containing the associations between chapters. Can be created automatically using the identify_associations() function
         
-        Returns:
-            A pyvis Network object
-        '''
+    #     Returns:
+    #         A pyvis Network object
+    #     '''
 
-        graph = Network(notebook = True, cdn_resources = "remote")
+    #     graph = Network(notebook = True, cdn_resources = "remote")
 
-        graph.toggle_physics(False)
+    #     graph.toggle_physics(False)
 
-        # Showing all interactivity options, but can be parameterized to only include some
-        graph.show_buttons()
+    #     # Showing all interactivity options, but can be parameterized to only include some
+    #     graph.show_buttons()
         
-        node_id_dict = get_node_id_dict(graph)
+    #     node_id_dict = get_node_id_dict(graph)
 
-        for chapter_name, chapter_id in node_id_dict.items():
-            graph.add_node(n_id = chapter_id, label = chapter_name, title = "Main Learning Concepts: " + graph[chapter_name][0] + "\n" + "Main Learning Outcomes:" + graph[chapter_name][1])
+    #     for chapter_name, chapter_id in node_id_dict.items():
+    #         graph.add_node(n_id = chapter_id, label = chapter_name, title = "Main Learning Concepts: " + graph[chapter_name][0] + "\n" + "Main Learning Outcomes:" + graph[chapter_name][1])
 
-        for key, values in associations.items():
-            for value in values:
-                graph.add_edge(node_id_dict[key], node_id_dict[value])
+    #     for key, values in associations.items():
+    #         for value in values:
+    #             graph.add_edge(node_id_dict[key], node_id_dict[value])
 
-        return graph
+    #     return graph
 
 
-    def get_dependency_interactive_graph(self, dependency_dict: dict[str, list[str]]) -> Network:
-        '''
-        Retrieve the interactive graph using the dependency dictionary. The function is not able to automatically display the graph so the .show() method must be called on the return object
+    # def get_dependency_interactive_graph(self, dependency_dict: dict[str, list[str]]) -> Network:
+        # '''
+        # Retrieve the interactive graph using the dependency dictionary. The function is not able to automatically display the graph so the .show() method must be called on the return object
 
-        Args:
-            dependency_dict (dict[str, list[str]]): A dictionary containing the chapter_names between chapters. Can be created automatically using the dependency_relation_extraction() function
+        # Args:
+        #     dependency_dict (dict[str, list[str]]): A dictionary containing the chapter_names between chapters. Can be created automatically using the dependency_relation_extraction() function
         
-        Returns:
-            A pyvis Network object
-        '''
+        # Returns:
+        #     A pyvis Network object
+        # '''
 
-        dependency_graph = Network(notebook = True, cdn_resources = "remote")
-        dependency_graph.toggle_physics(False)
-        dependency_graph.show_buttons()
+        # dependency_graph = Network(notebook = True, cdn_resources = "remote")
+        # dependency_graph.toggle_physics(False)
+        # dependency_graph.show_buttons()
 
-        node_id_dict = get_node_id_dict(dependency_dict)
+        # node_id_dict = get_node_id_dict(dependency_dict)
 
-        for chapter_name, chapter_id in node_id_dict.items():
-            dependency_graph.add_node(n_id = chapter_id, label = chapter_name)
+        # for chapter_name, chapter_id in node_id_dict.items():
+        #     dependency_graph.add_node(n_id = chapter_id, label = chapter_name)
 
-        for key, values in dependency_dict.items():
-            for value in values:
-                dependency_graph.add_edge(node_id_dict[key], node_id_dict[value])
+        # for key, values in dependency_dict.items():
+        #     for value in values:
+        #         dependency_graph.add_edge(node_id_dict[key], node_id_dict[value])
 
-        return dependency_graph
+        # return dependency_graph
     
 
-    def draw_hypergraph(self, dictionary: dict[str, list[str]]) -> None:
+    def draw_hypergraph(self) -> None:
         '''
-        Generate and display a hypergraph given a dependency dictionary generated from identify_dependencies() or association dict generated by identify_associations()
+        Generate and display a hypergraph
 
         Args:
-            dependencies (dict[str, list[str]]): A dictionary of dependencies. Can be generated by identify_dependencies(). The key should be a chapter name and the value a list of chapters it depends on
+            None
 
         Returns:
             None
         '''
+        if not self.dependencies:
+            raise AttributeError('self.dependencies not found, run identify_dependencies first')
                 
-        sorted_dependencies = graphlib.TopologicalSorter(graph = dictionary)
+        sorted_dependencies = graphlib.TopologicalSorter(self.dependencies)
         sorted_dependencies = tuple(sorted_dependencies.static_order())
 
         temp = sorted_dependencies
         sorted_dependencies = {}
 
         for value in temp:
-            sorted_dependencies[value] = dictionary[value]
+            sorted_dependencies[value] = self.dependencies[value]
 
         hypergraph = hnx.Hypergraph(sorted_dependencies)
         hnx.draw(hypergraph)
@@ -585,7 +602,7 @@ class relationExtractor:
     #         sorted_dependencies[value] = dictionary[value]
 
 
-    def draw_hierarchy(self, terms: list[tuple[str, str]]) -> None:
+    def draw_hierarchy(self) -> None:
         '''
         Draws the hierarchy given a list of terms
 
@@ -595,11 +612,14 @@ class relationExtractor:
         Returns:
             None
         '''
+        if not self.terminology:
+            raise AttributeError('self.terminiology not found, run build_terminology first')
+
         g = graphviz.Digraph(graph_attr = {'rankdir': 'TB'})
         nodes = set()
         edges = set()
 
-        for tup in terms:
+        for tup in self.terminology:
             first, second = tup
             if first not in nodes:
                 g.node(first)
@@ -616,12 +636,11 @@ class relationExtractor:
     def evaluate(self, 
                 type_eval: str, 
                 num_generated: int,
-                generated: list[list[str]] | dict[str, list[str]], 
+                # generated: list[list[str]] | dict[str, list[str]], 
                 ground_truth: list[str], 
-                data: list[list[str]] | dict[str, list[str]],
-                metrics: list, 
-                print_results: bool = False
-                ) -> EvaluationResult:
+                # data: list[list[str]] | dict[str, list[str]],
+                metrics: list
+                ) -> list[dict]:
                 # ) -> list[SingleTurnSample]:
         ''' 
         Evaluate concepts or outcomes generated from the large language model  
@@ -629,61 +648,89 @@ class relationExtractor:
         Args:
             type_eval (str): type of evaluation. 'concepts' to evaluate generated concepts, 'outcomes' to evaluate generated outcomes
             num_generated (int): number of generated concepts or outcomes
-            generated (list[list[str]] | dict[str, list[str]]): dictionary with chapter name as key and value as the list of concepts
             ground_truth (list): ground truth concepts 
             data (list[list[str]] | dict[str, list[str]]): data given to function that identifies terms, concepts, or outcomes
             metrics (list): list of metrics to use for evaluation
-            print_results (bool, default False): if True, prints results to screen
 
         Returns:
-            EvaluationResult: evaluation results 
-        '''      
-        samples = []
-        if isinstance(data, dict):
-            keys = list(data.keys())
+            list[dict]: evaluation results per sample
+        '''
+        if not self.outcomes:
+            raise AttributeError('self.outcomes not found, run identify_outcomes first')
 
-        if isinstance(generated, dict):
-            values = list(generated.values())
+        if not self.concepts:
+            raise AttributeError('self.concepts not found, run identify_concepts first')
+
+        if not self.key_terms:
+            raise AttributeError('self.key_terms not found, run identify_key_terms first')
+        samples = []
 
         for i in range(len(ground_truth)):
             if type_eval == 'concepts': # concepts always come from web chapters
-                prompt = f'Identify the {num_generated} most important learning concepts for chapter {self.chapters[i]}. The relevant context can be found here: {data[keys[i]]}.'            
-                retrieved = data[keys[i]]
+                generated = ' '.join(self.concepts[i])
+                prompt = f'Identify the {num_generated} most important learning concepts for chapter {self.chapters[i]}. The relevant context can be found here: {list(self.retrieved_concept_context.keys())[i]}.'            
+                retrieved = self.retrieved_concept_context[list(self.retrieved_concept_context.keys())[i]]
 
             elif type_eval == 'outcomes':
-                prompt = f'Identify the {num_generated} most important learning outcomes for chapter {self.chapters[i]}. The relevant context can be found here: {data[keys[i]]}.'
-                retrieved = data[keys[i]]
+                generated = ' '.join(self.outcomes[i])
+                prompt = f'Identify the {num_generated} most important learning outcomes for chapter {self.chapters[i]}. The relevant context can be found here: {list(self.retrieved_outcome_context.keys())[i]}.'
+                retrieved = self.retrieved_outcome_context[list(self.retrieved_outcome_context.keys())[i]]
             
             elif type_eval == 'terms':
-                concept = ' '.join(data[i])
-                prompt = f'Identify {num_generated} key terms for the following concept: {concept}.'
-                retrieved = data[keys[i]]
-
+                generated = ' '.join(self.key_terms[i])
+                prompt = f'Identify {num_generated} key terms for chapter {self.chapters[i]}. Relevant documents can be found here: {list(self.retrieved_term_context.keys())[i]}'
+                retrieved = self.retrieved_term_context[self.retrieved_term_context.keys()[i]]
 
             samples.append(LLMTestCase(
                 input = prompt, 
-                actual_output = ' '.join(generated[i]) if not isinstance(generated, dict) else ' '.join(values[i]),
-                retrieval_context = [retrieved],
+                actual_output = generated,
+                retrieval_context = [doc.page_content for doc in retrieved],
                 expected_output = ground_truth[i],
-                # reference_contexts = [textbook[self.chapters[i]]] # for now this is just the chapter text, maybe should remove
             ))
 
-        # dataset = EvaluationDataset(test_cases = samples)
-        result = ev(samples, metrics, print_results = print_results)
-        return result
+        results = []
+        def process_sample(metrics, sample) -> dict:
+            sample_results = []
+            for metric in metrics:
+                metric.measure(sample)
+                sample_results.append(
+                    {
+                    'name': metric.__name__,
+                    'score': metric.score,
+                    'input': sample.input,
+                    'output': sample.actual_output,
+                    'success': metric.is_successful(),
+                    'reason': metric.reason
+                    }
+                )
+
+            return sample_results
+
+        with ThreadPoolExecutor(max_workers = len(samples)) as pool:
+            futures = []
+            for sample in samples:
+                futures.append(pool.submit(process_sample, metrics, sample))
+
+            for f in futures:
+                results.extend(f.result())
+
+        return results
 
 
-    def build_terminology(self, terms: list[list[str]], num_workers: int = 1) -> list[tuple[str, str]]:
+    def build_terminology(self) -> list[tuple[str, str]]:
         '''
-        Build terminology using terms and is-a relationships 
+        Build terminology using key terms and is-a relationships 
 
         Args:
             terms (list[list[str]]): key terms to use
-            num_workers (int, default 1): number of workers to use 
 
         Returns:
             list[tuple[str, str]]: is-a relationships 
         '''
+        if not self.key_terms:
+            # should i do it for them here
+            raise AttributeError('self.key_terms not found. Run identify_key_terms() first')
+
         def clean(text):
             text = ''.join([char for char in text if char not in punctuation])
             text = text.strip()
@@ -704,42 +751,52 @@ class relationExtractor:
             return (first, second) if 'yes' in response.lower() else None
 
         terminology = set()
-        terms = [clean(word) for l in terms for word in l]
+        terms = [clean(word) for l in self.key_terms for word in l]
 
-        with ThreadPoolExecutor(max_workers = num_workers) as p:
+        with ThreadPoolExecutor(max_workers = len(terms)) as p:
             futures = []
             for i in range(len(terms)):
                 for j in range(len(terms)):
                     if i != j:
-                        futures.append(p.submit(process_pair, terms[i], terms[j]))
+                        future = p.submit(process_pair, terms[i], terms[j])
+                        futures.append(future)
 
             for f in futures:
-                result = f.result()
-                if result is not None: terminology.add(result)
+                terminology.add(f.result())
 
+        self.terminology = list(terminology)
         return list(terminology)
 
 
-    def build_knowledge_graph(self, dependencies: dict[str, list[str]], concepts: list[list[str]], outcomes: list[list[str]], key_terms: list[list[str]]) -> Network:
+    def build_knowledge_graph(self) -> Network:
         '''
         Builds a knowledge using learning concepts, outcomes, and key terms
 
         Args:
-            dependencies (dict[str, list[str]]): chapter dependencies 
-            concepts (list[list[str]]): learning concepts
-            outcomes (list[list[str]]): learning outcomes
-            key_terms (list[list[str]]): key_terms for chapters
+            None
         
         Returns:
             Network: pyvis network
         '''
+        if not self.outcomes:
+            raise AttributeError('self.outcomes not found, run identify_outcomes first')
+
+        if not self.concepts:
+            raise AttributeError('self.concepts not found, run identify_concepts first')
+
+        if not self.key_terms:
+            raise AttributeError('self.key_terms not found, run identify_key_terms first')
+
+        if not self.dependencies:
+            raise AttributeError('self.dependencies not found, run identify_dependencies first')
+
         kg = Network(notebook = True, cdn_resources='remote')
         
-        keys = list(dependencies.keys())
+        keys = list(self.dependencies.keys())
         used_nodes = {}
 
         j = 0 # used for node ids
-        for k, v in dependencies.items():
+        for k, v in self.dependencies.items():
             if k not in used_nodes:
                 kg.add_node(j, k, color = 'red') # node id, node label
                 used_nodes[k] = j
@@ -753,41 +810,44 @@ class relationExtractor:
                 
                 kg.add_edge(used_nodes[k], used_nodes[neighbor], label = 'requires')
 
-        
-        for i in range(len(concepts)):
-            concept_str = ' '.join(concepts[i])
+        for i in range(len(self.concepts)):
+            concept_str = ' '.join(self.concepts[i])
             kg.add_node(j, f'{keys[i]} concepts', title = concept_str, color = 'green')
             kg.add_edge(j, used_nodes[keys[i]], label = 'covers')
             j += 1
     
-            terms = ' '.join(key_terms[i])
+            terms = ' '.join(self.key_terms[i])
             kg.add_node(j, f'{keys[i]} terms', title = terms, color = 'blue')
             kg.add_edge(j, used_nodes[keys[i]], label = 'contains key terms')
             j += 1
 
-            outcome = ' '.join(outcomes[i])
+            outcome = ' '.join(self.outcomes[i])
             kg.add_node(j, f'{keys[i]} outcomes', title = outcome, color = 'purple')
             kg.add_edge(j , used_nodes[keys[i]], label = 'results with knowledge in')
             j += 1
     
+        self.kg = kg
         return kg
 
     
-    def draw_knowledge_graph(self, kg: Network) -> None:
+    def draw_knowledge_graph(self) -> None:
         '''
-        Takes knowledge graph and turns it into an html file that can be used to visualize a knowledge graph
+        Turns knowledge graph into an html file that can be visualized, file path: ./visualizations/kg.html
 
         Args:
-            kg (nx.Graph): networkx graph to draw
+            None
 
         Returns:
             None
         '''
+        if not self.kg:
+            raise AttributeError(f'self.kg not found. Run build_knowledge_graph() first')
+
         if not os.path.exists('./visualizations/'):
             os.mkdir('./visualizations/')
 
-        kg.repulsion(spring_length = 250)
-        display(kg.show('./visualizations/kg.html'))
+        self.kg.repulsion(spring_length = 250)
+        display(self.kg.show('./visualizations/kg.html'))
 
 
     # def generate_testset(self, size: int = 10) -> DataFrame:

@@ -4,6 +4,7 @@ from langchain_mongodb.vectorstores import MongoDBAtlasVectorSearch
 from src.transformerEmbeddings import TransformerEmbeddings
 from src.utils import chunk_doc
 # from langchain_huggingface.embeddings import HuggingFaceEmbeddings
+from langchain_core.vectorstores import InMemoryVectorStore
 
 
 class RetrievalSystem:
@@ -48,13 +49,14 @@ class RetrievalSystem:
         # # create documents
         self.docs = [Document(page_content = chunk) for chunk in chunks]
 
-        if reset:
-            self.remove_docs()
+        # if reset:
+        #     self.remove_docs()
         
-        self.store = MongoDBAtlasVectorSearch(collection = self.collection, embedding = TransformerEmbeddings(model = model))
+        # self.store = MongoDBAtlasVectorSearch(collection = self.collection, embedding = TransformerEmbeddings(model = model))
+        self.store = InMemoryVectorStore(embedding = TransformerEmbeddings(model = model))
 
-        if reset:
-            self.store.add_documents(documents = self.docs)
+        # if reset:
+        self.store.add_documents(documents = self.docs)
 
 
     def invoke(self, query: str, k: int = 4) -> list[Document]:

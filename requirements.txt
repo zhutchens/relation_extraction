@@ -28,7 +28,7 @@ dataclasses-json==0.6.7
 datasets==3.2.0
 debugpy==1.8.2
 decorator==5.1.1
-deepeval==2.1.5
+deepeval==2.1.6
 Deprecated==1.2.15
 dill==0.3.8
 distro==1.9.0
@@ -45,7 +45,6 @@ fonttools==4.53.1
 frozenlist==1.4.1
 fsspec==2024.9.0
 gensim==4.3.2
-googleapis-common-protos==1.66.0
 graphviz==0.20.3
 greenlet==3.0.3
 grpc-google-iam-v1==0.14.0
@@ -63,7 +62,6 @@ igraph==0.11.6
 importlib_metadata==8.4.0
 iniconfig==2.0.0
 ipykernel==6.29.5
-ipysigma==0.24.4
 ipython==8.26.0
 ipython-genutils==0.2.0
 ipywidgets==8.1.5
