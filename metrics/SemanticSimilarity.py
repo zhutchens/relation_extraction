@@ -2,7 +2,6 @@ from deepeval.metrics import BaseMetric
 from deepeval.test_case import LLMTestCase
 from sentence_transformers import SentenceTransformer
 
-
 class SemanticSimilarity(BaseMetric):
 
     def __init__(self, threshold: float = 0.5, st_model: str = None) -> None:

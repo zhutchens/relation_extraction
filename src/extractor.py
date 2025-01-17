@@ -7,37 +7,13 @@ from pyvis.network import Network
 import hypernetx as hnx
 import matplotlib.pyplot as plt
 import graphlib
-# from ragas import evaluate as ev
-# from ragas import SingleTurnSample
-# from ragas.dataset_schema import EvaluationDataset
 from src.retrieval import RetrievalSystem
 from langchain_core.documents import Document
 from src.utils import rank_docs
-from string import punctuation
-from concurrent.futures import ThreadPoolExecutor
 from deepeval.test_case import LLMTestCase
 import pymupdf
-
-
-def create_concept_graph_structure(param_list: list) -> dict:
-    return_dict = {}
-
-    for list_itm in param_list:
-        return_dict[list_itm] = []
-
-    return return_dict
-
-
-def get_node_id_dict(dictionary: dict) -> dict:
-    
-    node_id_dict = {}
-    id_count = 1
-    
-    for name in dictionary.keys():
-        node_id_dict[name] = id_count
-        id_count += 1
-
-    return node_id_dict    
+from src.utils import process_sample, create_concept_graph_structure, clean, process_pair
+from concurrent.futures import ThreadPoolExecutor
 
 
 # NOTE: Currently one main issue, the function that finds the associations between chapters seems to be broken. I think its the algorithm thats wrong. It also takes 10+ minutes to run
@@ -85,6 +61,7 @@ class relationExtractor:
         self.chapters = chapters
         self.openai_model = openai_model
         self.embedding_model = st_model
+        self.concepts, self.outcomes, self.key_terms, self.retrieved_concept_context, self.retrieved_outcome_context, self.retrieved_term_context, self.terminology, self.kg, self.main_topics, self.dependencies, self.main_topic_relationships, self.summarization = None, None, None, None, None, None, None, None, None, None, None, None
 
         os.environ['OPENAI_API_KEY'] = token
         self.llm = ChatOpenAI(model = openai_model, max_tokens = None, temperature = temp)
@@ -148,7 +125,7 @@ class relationExtractor:
         
         # if input_type == 'chapter':
         #     prompt = f'''
-        #             Identify {n_terms} key terms from Chapter {chapter_name} in descending order of significance, listing the most significant terms first. The textbook is available here: {self.link}.
+        #             Identify {n_terms} key terms from Chapter {chapter_name} in descending order of significance, listing the most significant terms first. The textbook is available here: {self.document}.
         #             For each term, provide the following:
         #             - Confidence Interval (CI),
         #             - Corresponding Statistical Significance (p-value),
@@ -188,7 +165,8 @@ class relationExtractor:
         terms = []
         retrieved = {}
         for chapter in self.chapters:
-            relevant_docs = self.retrieval_pipeline(f'Identify {n_terms} key terms for chapter {chapter}.', self.link)
+            relevant_docs = self.retrieval_pipeline(f'Identify {n_terms} key terms for chapter {chapter}.', self.document)
+            relevant_docs = [t[0][1].page_content for t in relevant_docs]
             retrieved[chapter] = relevant_docs
 
             prompt = f'''
@@ -222,7 +200,7 @@ class relationExtractor:
         Returns:
             str: summary of textbook
         '''
-        self.summarization = self.llm.invoke(f"Please summarize this content: {self.link}").content
+        self.summarization = self.llm.invoke(f"Please summarize this content: {self.document}").content
         return self.summarization
 
 
@@ -258,7 +236,7 @@ class relationExtractor:
     #     '''
     #     # NOTE: This is very, very, inconsistent. Do not recommend using this.
 
-    #     # chapters = self.llm.invoke(f"Please identify the chapters in this textbook: {self.link}").content
+    #     # chapters = self.llm.invoke(f"Please identify the chapters in this textbook: {self.document}").content
     #     chapters = self.llm.invoke().content
     #     chapters = chapters.split('\n')
     #     chapter_dict = {}
@@ -281,7 +259,7 @@ class relationExtractor:
         '''
 
         prompt = f'''
-                    Please identify the main topics from this textbook: {self.link}. Please provide justification.
+                    Please identify the main topics from this textbook: {self.document}. Please provide justification.
                     Format:
                     main topic :: justification
                   '''
@@ -335,15 +313,16 @@ class relationExtractor:
 
         for name in self.chapters:
             prompt = f'Identify {num_outcomes} learning outcomes from chapter {name}.'
-            relevant_docs = self.retrieval_pipeline(prompt, self.link)
+            relevant_docs = self.retrieval_pipeline(prompt, self.document)
+            relevant_docs = [t[0][1].page_content for t in relevant_docs]
         
             # # single shot prompt 
             single_prompt = f'''
                             Identify the {num_outcomes} most important learning outcomes for chapter: {name}. 
-                            The relevant context can be found here: {' '.join(t[0][1].page_content for t in relevant_docs)}
+                            The relevant context can be found here: {relevant_docs}
                             '''
 
-            retrieved_contexts[name] = ''.join([t[0][1].page_content for t in relevant_docs])
+            retrieved_contexts[name] = relevant_docs
 
             response = self.llm.invoke(single_prompt).content
 
@@ -391,15 +370,16 @@ class relationExtractor:
 
         for name in self.chapters:
             prompt = f'Identify {num_concepts} learning concepts from chapter {name}.'
-            relevant_docs = self.retrieval_pipeline(prompt, self.link)
+            relevant_docs = self.retrieval_pipeline(prompt, self.document)
+            relevant_docs = [t[0][1].page_content for t in relevant_docs]
             
             # # single shot prompt 
             single_prompt = f'''
                              Identify the {num_concepts} most important learning concepts for chapter: {name}. 
-                             The relevant context can be found here: {' '.join(t[0][1].page_content for t in relevant_docs)}
+                             The relevant context can be found here: {relevant_docs}
                              '''
 
-            retrieved_contexts[name] = ''.join([t[0][1].page_content for t in relevant_docs])
+            retrieved_contexts[name] = relevant_docs
 
             current_concept = self.llm.invoke(single_prompt).content
             concept_list.append([concept for concept in current_concept.split('\n') if concept != ''])
@@ -481,7 +461,7 @@ class relationExtractor:
         Returns:
             None
         '''
-        if not self.dependencies:
+        if self.dependencies is None:
             raise AttributeError('self.dependencies not found, run identify_dependencies first')
 
         graph = graphviz.Digraph()
@@ -563,7 +543,7 @@ class relationExtractor:
         Returns:
             None
         '''
-        if not self.dependencies:
+        if self.dependencies is None:
             raise AttributeError('self.dependencies not found, run identify_dependencies first')
                 
         sorted_dependencies = graphlib.TopologicalSorter(self.dependencies)
@@ -612,7 +592,7 @@ class relationExtractor:
         Returns:
             None
         '''
-        if not self.terminology:
+        if self.terminology is None:
             raise AttributeError('self.terminiology not found, run build_terminology first')
 
         g = graphviz.Digraph(graph_attr = {'rankdir': 'TB'})
@@ -655,16 +635,10 @@ class relationExtractor:
         Returns:
             list[dict]: evaluation results per sample
         '''
-        if not self.outcomes:
-            raise AttributeError('self.outcomes not found, run identify_outcomes first')
+        if self.concepts is None and self.outcomes is None and self.key_terms is None:
+            raise AttributeError('you must have at least one of the following functions ran to perform evaluation: identify_concepts, identify_outcomes, identify_key_terms')
 
-        if not self.concepts:
-            raise AttributeError('self.concepts not found, run identify_concepts first')
-
-        if not self.key_terms:
-            raise AttributeError('self.key_terms not found, run identify_key_terms first')
         samples = []
-
         for i in range(len(ground_truth)):
             if type_eval == 'concepts': # concepts always come from web chapters
                 generated = ' '.join(self.concepts[i])
@@ -684,35 +658,13 @@ class relationExtractor:
             samples.append(LLMTestCase(
                 input = prompt, 
                 actual_output = generated,
-                retrieval_context = [doc.page_content for doc in retrieved],
+                retrieval_context = retrieved,
                 expected_output = ground_truth[i],
             ))
 
         results = []
-        def process_sample(metrics, sample) -> dict:
-            sample_results = []
-            for metric in metrics:
-                metric.measure(sample)
-                sample_results.append(
-                    {
-                    'name': metric.__name__,
-                    'score': metric.score,
-                    'input': sample.input,
-                    'output': sample.actual_output,
-                    'success': metric.is_successful(),
-                    'reason': metric.reason
-                    }
-                )
-
-            return sample_results
-
-        with ThreadPoolExecutor(max_workers = len(samples)) as pool:
-            futures = []
-            for sample in samples:
-                futures.append(pool.submit(process_sample, metrics, sample))
-
-            for f in futures:
-                results.extend(f.result())
+        for sample in samples: # i would like to parallelize this but python is annoying about parallelization
+            results.extend(process_sample(metrics, sample))
 
         return results
 
@@ -727,28 +679,10 @@ class relationExtractor:
         Returns:
             list[tuple[str, str]]: is-a relationships 
         '''
-        if not self.key_terms:
+        if self.key_terms is None:
             # should i do it for them here
             raise AttributeError('self.key_terms not found. Run identify_key_terms() first')
 
-        def clean(text):
-            text = ''.join([char for char in text if char not in punctuation])
-            text = text.strip()
-            return text
-
-        def process_pair(first, second):
-            if first == second: return None
-            prompt = f'''
-                Q: Is there an is-a relationship present between dog and mammal?
-                A: Yes
-
-                Q: Is there an is-a relationship present between vehicle and car?
-                A: No
-
-                Q: Is there an is-a relationship presnet between {first} and {second}?
-                '''
-            response = self.llm.invoke(prompt).content
-            return (first, second) if 'yes' in response.lower() else None
 
         terminology = set()
         terms = [clean(word) for l in self.key_terms for word in l]
@@ -758,7 +692,7 @@ class relationExtractor:
             for i in range(len(terms)):
                 for j in range(len(terms)):
                     if i != j:
-                        future = p.submit(process_pair, terms[i], terms[j])
+                        future = p.submit(process_pair, terms[i], terms[j], self.llm)
                         futures.append(future)
 
             for f in futures:
@@ -778,16 +712,16 @@ class relationExtractor:
         Returns:
             Network: pyvis network
         '''
-        if not self.outcomes:
+        if self.outcomes is None:
             raise AttributeError('self.outcomes not found, run identify_outcomes first')
 
-        if not self.concepts:
+        if self.concepts is None:
             raise AttributeError('self.concepts not found, run identify_concepts first')
 
-        if not self.key_terms:
+        if self.key_terms is None:
             raise AttributeError('self.key_terms not found, run identify_key_terms first')
 
-        if not self.dependencies:
+        if self.dependencies is None:
             raise AttributeError('self.dependencies not found, run identify_dependencies first')
 
         kg = Network(notebook = True, cdn_resources='remote')
@@ -840,7 +774,7 @@ class relationExtractor:
         Returns:
             None
         '''
-        if not self.kg:
+        if self.kg is None:
             raise AttributeError(f'self.kg not found. Run build_knowledge_graph() first')
 
         if not os.path.exists('./visualizations/'):

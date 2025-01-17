@@ -41,16 +41,17 @@ from src.extractor import relationExtractor
 from dotenv import load_dotenv
 from os import getenv, environ
 from deepeval.metrics import AnswerRelevancyMetric, ContextualPrecisionMetric, ContextualRecallMetric, FaithfulnessMetric
-from custom_metrics.SemanticSimilarity import SemanticSimilarity
+from metrics.SemanticSimilarity import SemanticSimilarity
 import pandas as pd
 import os
+import time
         
 load_dotenv()
 link = getenv(textbook) # Testing 2214 data structures textbook here
 token = getenv('OPENAI_API_KEY')
 environ['OPENAI_API_KEY'] = token
 connection = getenv('connection_string')
-
+ 
 if textbook == 'dsa_2214':
     chapters = [
         'Data Structures and Algorithms',
@@ -141,6 +142,7 @@ chapters = chapters[which_chapters[0]:which_chapters[-1] + 1]
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
 
+start = time.time()
 extractor = relationExtractor(link, 
                             token, 
                             chapters, 
@@ -155,11 +157,17 @@ extractor = relationExtractor(link,
                             temp = temp)
 
 if testing == 'concepts':
+    print('inside concepts')
     generated, retrieved = extractor.identify_concepts(num_generated)
 elif testing == 'outcomes':
+    print('inside outcomes')
     generated, retrieved = extractor.identify_outcomes(num_generated)
 else:
+    print('inside terms')
     generated, retrieved = extractor.identify_key_terms(num_generated)
+
+end = time.time()
+print(f'Time taken to create extractor and calculate {testing}: {end - start}')
 
 data = pd.read_csv('data/sorting.csv')
 data.columns = ['concept', 'outcome']
@@ -189,7 +197,7 @@ else:
 # print(f'Instantiating Semantic Similarity in metrics list with sentence transformer ' + extractor.embedding_model)
 metrics = [AnswerRelevancyMetric(), FaithfulnessMetric(), ContextualPrecisionMetric(), ContextualRecallMetric(), SemanticSimilarity(st_model = extractor.embedding_model)]
 # print('Successfully instantiated Semantic Similarity class within metrics list... starting evaluation')
-results = extractor.evaluate(testing, num_generated, generated, actual, retrieved, metrics = metrics)
+results = extractor.evaluate(testing, num_generated, generated, metrics = metrics)
 
 if not os.path.exists('./results'):
     os.mkdir('./results/')
@@ -198,10 +206,12 @@ else:
     os.chdir('./results/')
 
 with open(f'results_{textbook}_{testing}.txt', 'w') as f:
+    f.write('-' * 15 + '\n')
     f.write(f'MODEL: {extractor.openai_model}\n')
     f.write(f'SENTENCE TRANSFORMER: {extractor.embedding_model}\n')
+    f.write(f'TEXTBOOK: {textbook}\n')
     f.write(f'CHAPTERS TESTED: {extractor.chapters}\n')
-    f.write('\n')
+    f.write('-' * 15 + '\n')
 
     averages = {}
     for r in results:
@@ -211,14 +221,20 @@ with open(f'results_{textbook}_{testing}.txt', 'w') as f:
         score = r['score']
         reason = r['reason']
 
+        f.write('-' * 15 + '\n')
         f.write(f'{name} ---> SCORE: {score} ---> {"FAILURE" if score < threshold else "SUCCESS"}\n')
         f.write(f'REASON: {reason}\n')
         f.write(f'QUERY: {query}\n')
         f.write(f'OUTPUT: {output}\n')
-        f.write('\n')
+        f.write('-' * 15 + '\n')
+
+        if name not in averages:
+            averages[name] = score
+        else:
+            averages[name] += score
 
     for k in averages.keys():
-        averages[k] /= len(results) # calculate average metric scores across all test cases
+        averages[k] /= len(extractor.chapters) # calculate average metric scores across all chapters
 
     f.write(f'')
     f.write('AVERAGE SCORES:\n')

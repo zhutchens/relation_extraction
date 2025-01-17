@@ -1,6 +1,8 @@
 from pymongo import MongoClient
 from langchain_core.documents import Document
-from langchain_mongodb.vectorstores import MongoDBAtlasVectorSearch
+# from langchain_mongodb.vectorstores import MongoDBAtlasVectorSearch
+# import chromadb
+from langchain_community.vectorstores.chroma import Chroma
 from src.transformerEmbeddings import TransformerEmbeddings
 from src.utils import chunk_doc
 # from langchain_huggingface.embeddings import HuggingFaceEmbeddings
@@ -8,7 +10,8 @@ from langchain_core.vectorstores import InMemoryVectorStore
 
 
 class RetrievalSystem:
-    def __init__(self, connection: str, 
+    def __init__(self, 
+                connection: str, 
                 content: str, 
                 chunk_size: int,
                 chunk_overlap: int, 
@@ -29,9 +32,9 @@ class RetrievalSystem:
             model (str): sentence transformer model to use 
             reset (bool, default False): if True, drop all documents from collection before adding new content
         '''
-        self.db_name = db_name
-        self.client = MongoClient(connection)
-        self.collection = self.client[db_name][collection_name]
+        # self.db_name = db_name
+        # self.client = MongoClient(connection)
+        # self.collection = self.client[db_name][collection_name]
 
         # chunk and put text in documents 
         # idk the best way to do this
@@ -54,9 +57,11 @@ class RetrievalSystem:
         
         # self.store = MongoDBAtlasVectorSearch(collection = self.collection, embedding = TransformerEmbeddings(model = model))
         self.store = InMemoryVectorStore(embedding = TransformerEmbeddings(model = model))
+        # self.store = Chroma(collection = 'embeddings', embedding_function = TransformerEmbeddings(model), persist_directory = './embeddings')
 
         # if reset:
         self.store.add_documents(documents = self.docs)
+            # self.store.persist()
 
 
     def invoke(self, query: str, k: int = 4) -> list[Document]:
