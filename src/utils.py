@@ -4,7 +4,7 @@ from io import BytesIO
 from langchain_text_splitters import SentenceTransformersTokenTextSplitter
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
+from nltk.stem import PorterStemmer
 from langchain_core.documents import Document
 from sentence_transformers import CrossEncoder
 from string import punctuation
@@ -61,12 +61,13 @@ def process_sample(metrics, sample) -> list[dict]:
             futures.append(pool.submit(process_metric, metric, sample))
         
         for f in futures:
-            sample_results.append(f.result())
+            if f.result() is not None:
+                sample_results.append(f.result())
 
     return sample_results
 
 
-def rank_docs(queries_and_docs: list[tuple[str, str]], top_n: int) -> list[Document]:
+def rank_docs(queries_and_docs: list[tuple[str, str]], top_n: int) -> list:
     '''
     Ranks queries and documents using CrossEncoder
 
@@ -75,7 +76,7 @@ def rank_docs(queries_and_docs: list[tuple[str, str]], top_n: int) -> list[Docum
         top_n (int): number of docs to return
 
     Returns:
-        list: list of top_n documents
+        list
     '''
     model = CrossEncoder(model_name = 'cross-encoder/ms-marco-MiniLM-L-6-v2')
     scores = model.predict([(t[0], t[1].page_content) for t in queries_and_docs])
@@ -98,7 +99,7 @@ def chunk_doc(chunk_size: int, chunk_overlap: int, model: str, link: str = None,
     Returns:
         list[str]: list of text chunks
     '''
-    splitter = SentenceTransformersTokenTextSplitter(chunk_size = chunk_size, chunk_overlap = chunk_overlap, model_name = model)
+    splitter = SentenceTransformersTokenTextSplitter(model_name = model)
 
     if link is not None:
         content = urlopen(link).read()
@@ -131,14 +132,14 @@ def normalize_text(text: str) -> str:
     Returns:
         str: cleaned text
     '''
-    lemmatizer = WordNetLemmatizer()
+    stemmer = PorterStemmer()
     punctuation = ['@', '%', '^', '*', '(', ')', '-', '_', '#', '~', '`', '\''] 
 
     text = ''.join([char for char in text if char not in punctuation])
     text = text.lower()
 
     words = word_tokenize(text = text)
-    words = [lemmatizer.lemmatize(word) for word in words]
+    words = [stemmer.stem(word) for word in words]
     words = [word for word in words if word not in set(stopwords.words('english'))]
 
     return ' '.join(words)

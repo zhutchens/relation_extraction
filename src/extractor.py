@@ -8,8 +8,8 @@ import hypernetx as hnx
 import matplotlib.pyplot as plt
 import graphlib
 from src.retrieval import RetrievalSystem
-from langchain_core.documents import Document
-from src.utils import rank_docs
+# from langchain_core.documents import Document
+# from src.utils import rank_docs
 from deepeval.test_case import LLMTestCase
 import pymupdf
 from src.utils import process_sample, create_concept_graph_structure, clean, process_pair
@@ -66,41 +66,7 @@ class relationExtractor:
         os.environ['OPENAI_API_KEY'] = token
         self.llm = ChatOpenAI(model = openai_model, max_tokens = None, temperature = temp)
 
-        self.vs = RetrievalSystem(connection_string, self.document, chunk_size, chunk_overlap, db_name, collection_name, st_model, reset)
-
-    
-    def retrieval_pipeline(self, query: str, context: str, num_queries: int = 4, top_n: int = 4) -> list[Document]:
-        '''
-        Retrieval pipeline from original query
-
-        Args:
-            query (str): original prompt
-            context (str): (something)
-            num_queries (int, default 4): number of additional queries to generate
-            top_n (int, default 4): top n documents to return
-
-        Returns:
-            list[Document]: top_n documents
-        '''
-        q_prompt = f'''
-                    You are tasked with enhancing this {query} for a retrieval-augmented pipeline. Output {num_queries} additional queries.
-                    You can find relevant context here: {context}.
-
-                    Output Format:
-                    query_1::query_2::query_3::query_4...::query_{num_queries}
-                    '''
-        
-        queries = self.llm.invoke(q_prompt).content.split('::')
-
-        retrieved_docs = []
-        for q in queries:
-            q_docs = self.vs.invoke(q)
-
-            for doc in q_docs:
-                retrieved_docs.append((q, doc))
-
-        # rank and return top_n docs
-        return rank_docs(retrieved_docs, top_n = top_n)
+        self.retriever = RetrievalSystem(connection_string, self.document, chunk_size, chunk_overlap, db_name, collection_name, st_model, reset)
         
 
     def identify_key_terms(self, n_terms: int, input_type: str = 'chapter', chapter_name: str = None, concepts: list[list[str]] = None) -> list[str] | dict[str, list[str]]:
@@ -162,11 +128,13 @@ class relationExtractor:
 
         # else:
         #     raise ValueError(f'input_type value must be chapter or concepts, got {input_type}')
+        if chapter_name is not None:
+            return self.llm.invoke(f'Identify {n_terms} key terms for {chapter_name}').content.split('\n')
+
         terms = []
         retrieved = {}
         for chapter in self.chapters:
-            relevant_docs = self.retrieval_pipeline(f'Identify {n_terms} key terms for chapter {chapter}.', self.document)
-            relevant_docs = [t[0][1].page_content for t in relevant_docs]
+            relevant_docs = [doc.page_content for doc in self.retriever.pipeline(f'Identify {n_terms} key terms for chapter {chapter}.', self.document, self.llm)]
             retrieved[chapter] = relevant_docs
 
             prompt = f'''
@@ -175,11 +143,11 @@ class relationExtractor:
 
                     Provide your answer in the following format:
 
-                    Concept 1,
-                    Concept 2,
-                    Concept 3, 
+                    key term 1,
+                    key term 2,
+                    key term 3, 
                     ...
-                    Concept n
+                    key term n
                     '''
 
             words = self.llm.invoke(prompt).content
@@ -204,23 +172,23 @@ class relationExtractor:
         return self.summarization
 
 
-    def create_chapter_dict(self, outcomes: list[str], concepts: list[str]) -> dict[str, tuple[str, str]]:
-        '''
-        Create a chapter dictionary containing the chapter names as keys and its concepts and outcomes in a tuple as the value
+    # def create_chapter_dict(self, outcomes: list[str], concepts: list[str]) -> dict[str, tuple[str, str]]:
+    #     '''
+    #     Create a chapter dictionary containing the chapter names as keys and its concepts and outcomes in a tuple as the value
 
-        Args:
-            outcomes (list[str]): a list of learning outcomes created from the identify_learning_outcomes function
-            concepts (list[str]): a list of learning concepts created from the identify_learning_concepts function
+    #     Args:
+    #         outcomes (list[str]): a list of learning outcomes created from the identify_learning_outcomes function
+    #         concepts (list[str]): a list of learning concepts created from the identify_learning_concepts function
 
-        Returns:
-            dict[str, tuple[str, str]]: dictionary containing chapter names as keys and concepts/outcomes as tuple
-        '''
-        outcome_concept_graph = {}
+    #     Returns:
+    #         dict[str, tuple[str, str]]: dictionary containing chapter names as keys and concepts/outcomes as tuple
+    #     '''
+    #     outcome_concept_graph = {}
 
-        for idx, name in enumerate(self.chapters):
-            outcome_concept_graph[name] = (concepts[idx], outcomes[idx])
+    #     for idx, name in enumerate(self.chapters):
+    #         outcome_concept_graph[name] = (concepts[idx], outcomes[idx])
                 
-        return outcome_concept_graph
+    #     return outcome_concept_graph
         
     # note: fix later
     # def identify_chapters(self) -> dict[str, str]:
@@ -313,13 +281,22 @@ class relationExtractor:
 
         for name in self.chapters:
             prompt = f'Identify {num_outcomes} learning outcomes from chapter {name}.'
-            relevant_docs = self.retrieval_pipeline(prompt, self.document)
-            relevant_docs = [t[0][1].page_content for t in relevant_docs]
+            relevant_docs = [doc.page_content for doc in self.retriever.pipeline(prompt, self.document, self.llm)]
         
             # # single shot prompt 
             single_prompt = f'''
                             Identify the {num_outcomes} most important learning outcomes for chapter: {name}. 
                             The relevant context can be found here: {relevant_docs}
+
+                            Additionally, use the following format for your response:
+                            Outcome 1,
+                            Outcome 2,
+                            Outcome 3,
+                            Outcome 4,
+                            .
+                            .
+                            .
+                            Outcome n
                             '''
 
             retrieved_contexts[name] = relevant_docs
@@ -369,14 +346,24 @@ class relationExtractor:
         retrieved_contexts = {}
 
         for name in self.chapters:
-            prompt = f'Identify {num_concepts} learning concepts from chapter {name}.'
-            relevant_docs = self.retrieval_pipeline(prompt, self.document)
-            relevant_docs = [t[0][1].page_content for t in relevant_docs]
+            # prompt = f'Identify {num_concepts} learning concepts from chapter {name}.'
+            chapter_terms = ' '.join(self.identify_key_terms(num_concepts, chapter_name = name))
+            relevant_docs = [doc.page_content for doc in self.retriever.pipeline(chapter_terms, self.document, self.llm)]
             
             # # single shot prompt 
             single_prompt = f'''
                              Identify the {num_concepts} most important learning concepts for chapter: {name}. 
-                             The relevant context can be found here: {relevant_docs}
+                             The relevant context can be found here: {relevant_docs}. 
+                             
+                             Additionally, use the following format for your response:
+                             Concept 1,
+                             Concept 2,
+                             Concept 3,
+                             Concept 4,
+                             .
+                             .
+                             .
+                             Concept n
                              '''
 
             retrieved_contexts[name] = relevant_docs
@@ -443,7 +430,7 @@ class relationExtractor:
             for j in range(i + 1, len(self.chapters)):
                 next_concept = ' '.join(content[j])
 
-                relation = self.llm.invoke(f"Please identify if these concepts: {next_concept} are a prerequisite for these concepts: {current_concept}. If there is NO prerequisite, please respond with 'No' and 'No' only.").content
+                relation = self.llm.invoke(f"Identify if these concepts: {next_concept} are prerequisites for these concepts: {current_concept}. If there is NO prerequisite, respond with 'No' and 'No' only.").content
                 if relation.split(',')[0].strip() != 'No':
                     relations_dict[self.chapters[j]].append(self.chapters[i])
 
@@ -595,22 +582,34 @@ class relationExtractor:
         if self.terminology is None:
             raise AttributeError('self.terminiology not found, run build_terminology first')
 
-        g = graphviz.Digraph(graph_attr = {'rankdir': 'TB'})
+        network = Network(notebook = True, cdn_resources = 'remote', layout = 'hierarchical')
         nodes = set()
         edges = set()
+        node_ids = {}
 
-        for tup in self.terminology:
-            first, second = tup
+        i = 0 # for node ids # for node ids
+        for first, second in self.terminology:
             if first not in nodes:
-                g.node(first)
-
-                if (first, second) not in edges:
-                    g.edge(first, second)
-
+                network.add_node(i, label = first)
                 nodes.add(first)
-                edges.add((first, second))
+                node_ids[first] = i
+                i += 1
 
-        display(Image(g.pipe(format = "png", renderer = "cairo", engine = 'dot')))
+            if second not in nodes:
+                network.add_node(i, label = second)
+                nodes.add(second)
+                node_ids[second] = i
+                i += 1
+
+            if (first, second) not in edges:
+                edges.add((node_ids[first], node_ids[second]))
+                network.add_edge(node_ids[first], node_ids[second])
+
+        if not os.path.exists('./visualizations/'):
+            os.mkdir('./visualizations/')
+
+        # network.repulsion()
+        display(network.show('./visualizations/tree_hierarchy.html'))
 
 
     def evaluate(self, 
@@ -642,18 +641,18 @@ class relationExtractor:
         for i in range(len(ground_truth)):
             if type_eval == 'concepts': # concepts always come from web chapters
                 generated = ' '.join(self.concepts[i])
-                prompt = f'Identify the {num_generated} most important learning concepts for chapter {self.chapters[i]}. The relevant context can be found here: {list(self.retrieved_concept_context.keys())[i]}.'            
+                prompt = f'Identify the {num_generated} most important learning concepts for chapter {self.chapters[i]}. The relevant context can be found here: {self.retrieved_concept_context[list(self.retrieved_concept_context.keys())[i]]}.'            
                 retrieved = self.retrieved_concept_context[list(self.retrieved_concept_context.keys())[i]]
 
             elif type_eval == 'outcomes':
                 generated = ' '.join(self.outcomes[i])
-                prompt = f'Identify the {num_generated} most important learning outcomes for chapter {self.chapters[i]}. The relevant context can be found here: {list(self.retrieved_outcome_context.keys())[i]}.'
+                prompt = f'Identify the {num_generated} most important learning outcomes for chapter {self.chapters[i]}. The relevant context can be found here: {self.retrieved_outcome_context[list(self.retrieved_outcome_context.keys())[i]]}.'
                 retrieved = self.retrieved_outcome_context[list(self.retrieved_outcome_context.keys())[i]]
             
             elif type_eval == 'terms':
                 generated = ' '.join(self.key_terms[i])
-                prompt = f'Identify {num_generated} key terms for chapter {self.chapters[i]}. Relevant documents can be found here: {list(self.retrieved_term_context.keys())[i]}'
-                retrieved = self.retrieved_term_context[self.retrieved_term_context.keys()[i]]
+                prompt = f'Identify {num_generated} key terms for chapter {self.chapters[i]}. The relevant context can be found here: {self.retrieved_term_context[list(self.retrieved_term_context.keys())[i]]}'
+                retrieved = self.retrieved_term_context[list(self.retrieved_term_context.keys())[i]]
 
             samples.append(LLMTestCase(
                 input = prompt, 
@@ -683,7 +682,6 @@ class relationExtractor:
             # should i do it for them here
             raise AttributeError('self.key_terms not found. Run identify_key_terms() first')
 
-
         terminology = set()
         terms = [clean(word) for l in self.key_terms for word in l]
 
@@ -696,7 +694,8 @@ class relationExtractor:
                         futures.append(future)
 
             for f in futures:
-                terminology.add(f.result())
+                if f.result() is not None:
+                    terminology.add(f.result())
 
         self.terminology = list(terminology)
         return list(terminology)
@@ -732,7 +731,7 @@ class relationExtractor:
         j = 0 # used for node ids
         for k, v in self.dependencies.items():
             if k not in used_nodes:
-                kg.add_node(j, k, color = 'red') # node id, node label
+                kg.add_node(j, k, color = 'red', size = 4) # node id, node label
                 used_nodes[k] = j
                 j += 1
                 
@@ -746,17 +745,17 @@ class relationExtractor:
 
         for i in range(len(self.concepts)):
             concept_str = ' '.join(self.concepts[i])
-            kg.add_node(j, f'{keys[i]} concepts', title = concept_str, color = 'green')
+            kg.add_node(j, f'{keys[i]} concepts', title = concept_str, color = 'green', size = 2)
             kg.add_edge(j, used_nodes[keys[i]], label = 'covers')
             j += 1
     
             terms = ' '.join(self.key_terms[i])
-            kg.add_node(j, f'{keys[i]} terms', title = terms, color = 'blue')
+            kg.add_node(j, f'{keys[i]} terms', title = terms, color = 'blue', size = 2)
             kg.add_edge(j, used_nodes[keys[i]], label = 'contains key terms')
             j += 1
 
             outcome = ' '.join(self.outcomes[i])
-            kg.add_node(j, f'{keys[i]} outcomes', title = outcome, color = 'purple')
+            kg.add_node(j, f'{keys[i]} outcomes', title = outcome, color = 'purple', size = 2)
             kg.add_edge(j , used_nodes[keys[i]], label = 'results with knowledge in')
             j += 1
     

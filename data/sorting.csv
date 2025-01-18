@@ -1,8 +1,4 @@
 concept,outcome
-Data Structures->Basics->Algorithm Analysis,Apply time complexity analysis guideline to an algorithm;Analyze time complexity of an algorithm in worst case
-Data Structures->Basics->Algorithm Analysis->O Notation,Demonstrate an understanding of big O notation;Evaluate the asymptotic order of five growth functions: O(1) O(log N) O(N) O(N log N) O(N^2)
-Algorithms->Non-recursive Algorthims,Demonstrate an understanding of non-recursive algorithms
-Algorithms->Non-recursive Algorithms->Search,Apply the Comparable interface for object comparison;Demonstrate an understanding of a search algorithm
 Algorithms->Non-recursive Algorithms->Search->Linear Search,Demonstrate an understanding of linear search;Analyze time complexity of linear search
 Algorithms->Non-recursive Algorithms->Search->Binary Search,Demonstrate an understanding of binary search;Analyze time complexity of binary search
 Algorithms->Non-recursive Algorithms->Sort,Demonstrate an understanding of sorting;
