@@ -608,12 +608,9 @@ class relationExtractor:
     def evaluate(self, 
                 type_eval: str, 
                 num_generated: int,
-                # generated: list[list[str]] | dict[str, list[str]], 
-                ground_truth: list[str], 
-                # data: list[list[str]] | dict[str, list[str]],
+                ground_truth: list[list[str]], 
                 metrics: list
                 ) -> list[dict]:
-                # ) -> list[SingleTurnSample]:
         ''' 
         Evaluate concepts or outcomes generated from the large language model  
 
@@ -666,7 +663,7 @@ class relationExtractor:
                 input = prompt, 
                 actual_output = generated,
                 retrieval_context = retrieved,
-                expected_output = ' '.join(ground_truth),
+                expected_output = ' '.join(ground_truth[i]),
             ))
 
         results = []

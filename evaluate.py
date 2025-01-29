@@ -19,6 +19,9 @@ if textbook != 'dsa_6114' and textbook != 'cs_3190' and textbook != 'dsa_2214':
     print('invalid textbook arg. use dsa_2214, dsa_6114, or cs_3190')
     sys.exit()
 
+if textbook == 'dsa_6114' or textbook == 'cs_3190':
+    raise NotImplementedError('Textbooks currently do not have any associated data. Please use dsa_2214 in the meantime')
+
 testing = sys.argv[4]
 if testing != 'concepts' and testing != 'outcomes' and testing != 'outcomes':
     print('invalid what_to_test arg. use concepts, outcomes, or key_terms')
@@ -134,7 +137,11 @@ CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
 
 data = pd.read_csv('data/dsa_clifford_a_shaffer_3_2_java.csv')
-actual = [data['concepts'][6]]
+
+if testing == 'concepts':
+    actual = data['concepts']
+else:
+    actual = data['outcomes']
 
 extractor = relationExtractor(link, 
                             [chapters], 
@@ -146,13 +153,12 @@ extractor = relationExtractor(link,
 
 if testing == 'concepts':
     generated, retrieved = extractor.identify_concepts(num_generated)
+    actual = [c.split['::'] for c in data['concepts']]
 elif testing == 'outcomes':
     generated, retrieved = extractor.identify_outcomes(num_generated)
+    actual = [o.split['::'] for o in data['outcomes']]
 else:
     generated, retrieved = extractor.identify_key_terms(num_generated)
-
-
-actual *= len(chapters)
 
 metrics = [SemanticSimilarity(st_model = extractor.embedding_model), AnswerRelevancyMetric(model = extractor.llm), FaithfulnessMetric(model = extractor.llm), ContextualPrecisionMetric(model = extractor.llm), ContextualRecallMetric(model = extractor.llm)]
 results = extractor.evaluate(testing, num_generated, actual, metrics = metrics)
