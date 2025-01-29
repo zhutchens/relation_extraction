@@ -3,11 +3,8 @@ from deepeval.test_case import LLMTestCase
 from sentence_transformers import SentenceTransformer
 from src.utils import normalize_text
 
-
 class SemanticSimilarity(BaseMetric):
-
     def __init__(self, threshold: float = 0.5, st_model: str = None) -> None:
-        print(f'Inside semantic similarity, st_model is {st_model}')
         self.model = SentenceTransformer(st_model)
         self.threshold = threshold
 
@@ -15,7 +12,7 @@ class SemanticSimilarity(BaseMetric):
         expected = self.model.encode(normalize_text(test_case.expected_output))
         out = self.model.encode(normalize_text(test_case.actual_output))
 
-        self.score =  self.model.similarity(expected, out).item()
+        self.score = self.model.similarity(expected, out).item()
         self.success = self.score >= self.threshold
         return self.score
 

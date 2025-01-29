@@ -1,11 +1,6 @@
 import sys
 if len(sys.argv) <= 8 or len(sys.argv) >= 10:
     print('usage: <openai_model> <openai_model_temperature> <sentence_transformer_model> <which_textbook> <which_chapters> <what_to_test> <num_to_generate> <threshold>')
-    # print('Options for which textbook: dsa_6114, cs_3190, dsa_2214')
-    # print('usage for which_chapters: which chapters to evaluate in the textbook, e.g., 1,2,3,4,5')
-    # print('Options for what_to_test: concepts, outcomes, key_terms')
-    # print(f'num_to_generate: number of concepts, outcomes, or key_terms to generate for testing')
-    # print()
     print('---Argument explanations---')
     print('\topenai_model: openai model to use')
     print('\topenai_model_temperature: temperature to use with openai model')
@@ -33,19 +28,17 @@ if testing != 'concepts' and testing != 'outcomes' and testing != 'outcomes':
     print('invalid what_to_test arg. use concepts, outcomes, or key_terms')
     sys.exit()
 
-
 num_generated = int(sys.argv[7])
 threshold = float(sys.argv[8])
 
 from src.extractor import relationExtractor
 from dotenv import load_dotenv
 from os import getenv, environ
-from deepeval.metrics import AnswerRelevancyMetric, ContextualPrecisionMetric, ContextualRecallMetric, FaithfulnessMetric
-from metrics.SemanticSimilarity import SemanticSimilarity
+from deepeval.metrics import AnswerRelevancyMetric, ContextualPrecisionMetric, ContextualRecallMetric, FaithfulnessMetric, ContextualRelevancyMetric
+from src.metrics.SemanticSimilarity import SemanticSimilarity
 import pandas as pd
 import os
-import time
-        
+
 load_dotenv()
 link = getenv(textbook) # Testing 2214 data structures textbook here
 token = getenv('OPENAI_API_KEY')
@@ -142,15 +135,14 @@ chapters = chapters[which_chapters[0]:which_chapters[-1] + 1]
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
 
-start = time.time()
 extractor = relationExtractor(link, 
-                            token, 
                             chapters, 
-                            connection, 
                             CHUNK_SIZE, 
                             CHUNK_OVERLAP, 
                             'DocumentEmbeddings', 
                             '2214_embeddings',
+                            connection,
+                            token,
                             reset = True,
                             openai_model = openai_model,
                             st_model = st_model,
@@ -163,13 +155,10 @@ elif testing == 'outcomes':
 else:
     generated, retrieved = extractor.identify_key_terms(num_generated)
 
-end = time.time()
-print(f'Time taken to create extractor and calculate {testing}: {end - start}')
+data = pd.read_csv('data/chp4.csv')
+data.columns = ['concept']
 
-data = pd.read_csv('data/sorting.csv')
-data.columns = ['concept', 'outcome']
-
-if 'testing' == 'concepts' or testing == 'key_terms':
+if testing == 'concepts' or testing == 'key_terms':
     concept_data = data['concept'].tolist()
     actual = []
     for string in concept_data:
@@ -177,8 +166,6 @@ if 'testing' == 'concepts' or testing == 'key_terms':
         for word in words:
             if word not in actual:
                 actual.append(word)
-
-    actual = [' '.join(actual)] * 4
 
 else:
     outcome_data = data['outcome'].tolist()
@@ -189,10 +176,10 @@ else:
             if s not in actual:
                 actual.append(s)
 
-    actual = [' '.join(actual)] * 4
+actual *= len(chapters)
 
-metrics = [AnswerRelevancyMetric(), FaithfulnessMetric(), ContextualPrecisionMetric(), ContextualRecallMetric(), SemanticSimilarity(st_model = extractor.embedding_model)]
-results = extractor.evaluate(testing, num_generated, generated, metrics = metrics)
+metrics = [SemanticSimilarity(st_model = extractor.embedding_model), AnswerRelevancyMetric(), FaithfulnessMetric(), ContextualPrecisionMetric(), ContextualRecallMetric(), ContextualRelevancyMetric()]
+results = extractor.evaluate(testing, num_generated, actual, metrics = metrics)
 
 if not os.path.exists('./results'):
     os.mkdir('./results/')
@@ -216,6 +203,7 @@ with open(f'results_{textbook}_{testing}.txt', 'w') as f:
         name = r['name']
         score = r['score']
         reason = r['reason']
+        expected = r['expected']
 
         f.write('-' * 20 + '\n')
         f.write(f'{name} ---> SCORE: {score} ---> {"FAILURE" if score < threshold else "SUCCESS"}\n')
@@ -224,7 +212,9 @@ with open(f'results_{textbook}_{testing}.txt', 'w') as f:
         f.write('\n')
         f.write(f'QUERY: {query}\n')
         f.write('\n')
-        f.write(f'OUTPUT: {output}\n')  
+        f.write(f'EXPECTED {testing.upper()}: {expected}')
+        f.write('\n')
+        f.write(f'GENERATED {testing.upper()}: {output}\n')  
         f.write('-' * 20 + '\n')
 
         if name not in averages:

@@ -1,14 +1,17 @@
-from urllib.request import urlopen
-import pymupdf
-from io import BytesIO
-from langchain_text_splitters import SentenceTransformersTokenTextSplitter
+from langchain_text_splitters import CharacterTextSplitter
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
-from nltk.stem import PorterStemmer
+from nltk.stem import WordNetLemmatizer
 from langchain_core.documents import Document
-from sentence_transformers import CrossEncoder
 from string import punctuation
-from concurrent.futures import ThreadPoolExecutor
+from sentence_transformers import CrossEncoder
+from langchain_community.document_loaders import UnstructuredURLLoader, UnstructuredFileLoader
+from unstructured.cleaners.core import clean_extra_whitespace, clean_non_ascii_chars
+import os
+import validators
+from string import punctuation
+from sentence_transformers import SentenceTransformer
+from src.transformerEmbeddings import TransformerEmbeddings
 
 
 def process_pair(first, second, llm):
@@ -39,88 +42,79 @@ def create_concept_graph_structure(param_list: list) -> dict:
         return_dict[list_itm] = []
 
     return return_dict
-  
-
-def process_sample(metrics, sample) -> list[dict]:
-    def process_metric(metric, sample):
-        metric.measure(sample)
-        result = {
-            'name': metric.__name__,
-            'score': metric.score,
-            'input': sample.input,
-            'output': sample.actual_output,
-            'success': metric.is_successful(),
-            'reason': metric.reason
-        }
-        return result
-
-    sample_results = []
-    futures = []
-    with ThreadPoolExecutor(max_workers = len(metrics)) as pool:
-        for metric in metrics:
-            futures.append(pool.submit(process_metric, metric, sample))
-        
-        for f in futures:
-            if f.result() is not None:
-                sample_results.append(f.result())
-
-    return sample_results
 
 
-def rank_docs(queries_and_docs: list[tuple[str, str]], top_n: int) -> list:
+def rank_docs(queries_and_docs) -> list[Document]:
     '''
-    Ranks queries and documents using CrossEncoder
+    Ranks queries and documents using reciprocal rank fusion
 
     Args:
-        queries_and_docs (list[tuple[str, str]]): queries and documents
+        scores_and_docs (list[tuple[Document, float]]): documents and relevancy scores
         top_n (int): number of docs to return
 
     Returns:
-        list
+        list[Document]: reranked documents 
     '''
-    model = CrossEncoder(model_name = 'cross-encoder/ms-marco-MiniLM-L-6-v2')
-    scores = model.predict([(t[0], t[1].page_content) for t in queries_and_docs])
+    model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+    
+    scores = model.predict(queries_and_docs)
+    
+    sorted_docs = sorted(list(zip(queries_and_docs, scores)), key = lambda x: x[1], reverse = True)
+    return [doc for (query, doc), score in sorted_docs]
 
-    return sorted(list(zip(queries_and_docs, scores)), key = lambda x: x[1], reverse = True)[:top_n]
 
-
-def chunk_doc(chunk_size: int, chunk_overlap: int, model: str, link: str = None, document: str = None, pdf_path: str = None) -> list[str]:
+def chunk_doc(documents: list[str] | str, chunk_size: int, chunk_overlap: int, model: str) -> list[Document]:
     '''
     Chunks an entire document
 
     Args:
+        documents (list[str] | str): documents to chunk
         chunk_size (int): number of characters in a chunk
         chunk_overlap (int): number characters that overlap between chunks
-        model (str): sentence transformer model to use 
-        link (str, default None): a web link to chunk
-        document (str, default None): entire document string to chunk
-        pdf_path (str, default None): a pdf path to chunk
+        model (str): sentence transformer model to use for text splitting
 
     Returns:
         list[str]: list of text chunks
     '''
-    splitter = SentenceTransformersTokenTextSplitter(model_name = model)
+    def process_loader(loader):
+        content = ''
+        for chunk in loader.load():
+            content += chunk.page_content + ' '
 
-    if link is not None:
-        content = urlopen(link).read()
-        doc = pymupdf.open('pdf', BytesIO(content))
-        text = ' '.join([page.get_text() for page in doc])
-        text = text.replace('\n', ' ')
-        return splitter.split_text(text)
+        return content
+    
+    splitter = CharacterTextSplitter(chunk_size = chunk_size, chunk_overlap = chunk_overlap)
 
-    elif document is not None:
-        text = document.replace('\n', ' ')
-        return splitter.split_text(text)
+    all_doc_content = ''
 
-    elif pdf_path is not None:
-        doc = pymupdf(pdf_path)
-        text = ' '.join([page.get_text() for page in doc])
-        text = text.replace('\n', ' ')
-        return splitter.split_text(text)
+    if isinstance(documents, list): # if documents is a list (could contain a mix of files, links, and python strings)
+        document_dict = {'urls': [], 'files': [], 'strings': []}
+        for doc in documents:
+            if os.path.exists(doc):
+                document_dict['files'].append(doc)
+            elif validators.url(doc):
+                document_dict['urls'].append(doc)
+            else:
+                document_dict['strings'].append(doc)
 
-    else:
-        raise ValueError(f'One of the following args must have a value: link, pdf_path, or document.')
-        
+        url_loader = UnstructuredURLLoader(document_dict['urls'])
+        file_loader = UnstructuredFileLoader(document_dict['files'])
+        string_loader = [Document(page_content = value) for value in document_dict['strings']]
+
+        for loader in [url_loader, file_loader, string_loader]:
+            all_doc_content += process_loader(loader)
+
+        return splitter.create_documents(all_doc_content)
+
+    elif os.path.exists(documents): # if documents is a single file
+        return UnstructuredFileLoader(documents).load_and_split(splitter)
+
+    elif validators.url(documents): # if documents is a single url
+        return UnstructuredURLLoader([documents]).load_and_split(splitter)
+
+    else: # if documents is an actual python string
+        return splitter.create_documents(documents)
+
 
 def normalize_text(text: str) -> str:
     '''
@@ -132,14 +126,16 @@ def normalize_text(text: str) -> str:
     Returns:
         str: cleaned text
     '''
-    stemmer = PorterStemmer()
-    punctuation = ['@', '%', '^', '*', '(', ')', '-', '_', '#', '~', '`', '\''] 
+    text = clean_extra_whitespace(text)
+    text = clean_non_ascii_chars(text)
+
+    l = WordNetLemmatizer()
 
     text = ''.join([char for char in text if char not in punctuation])
     text = text.lower()
 
     words = word_tokenize(text = text)
-    words = [stemmer.stem(word) for word in words]
+    words = [l.lemmatize(word) for word in words]
     words = [word for word in words if word not in set(stopwords.words('english'))]
 
     return ' '.join(words)

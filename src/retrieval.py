@@ -1,139 +1,111 @@
-# from pymongo import MongoClient
-from langchain_core.documents import Document
-# from langchain_mongodb.vectorstores import MongoDBAtlasVectorSearch
-# import chromadb
-from langchain_community.vectorstores.chroma import Chroma
+from src.utils import normalize_text, chunk_doc, rank_docs
+from sentence_transformers import SentenceTransformer, util
 from src.transformerEmbeddings import TransformerEmbeddings
-from src.utils import chunk_doc
-# from langchain_huggingface.embeddings import HuggingFaceEmbeddings
-from langchain_core.vectorstores import InMemoryVectorStore
-from langchain_community.retrievers import BM25Retriever
-from src.utils import rank_docs
-# from src.utils import normalize_text
-
+from rank_bm25 import BM25Okapi
+from langchain_core.documents import Document
+import sys
+from deepeval.models import DeepEvalBaseLLM
 
 
 class RetrievalSystem:
-    def __init__(self, 
-                connection: str, 
-                content: str, 
-                chunk_size: int,
-                chunk_overlap: int, 
-                db_name: str,
-                collection_name: str,
-                model: str,
-                reset: bool = False):
+    def __init__(self, content: str | list[str], chunk_size: int, chunk_overlap: int, model: str) -> None:
         '''
         Construct a retrieval system using MongoDB Atlas
 
         Args:
-            connection (str): connection string to MongoDB client
-            content (str): content to use in retrieval system. Available options are pdf paths, text string, or web links
+            content (list[str] | str): content to use in retrieval system. Available options are pdf paths, text string, or web links
             chunk_size (itn): number of characters to have in a chunk of the content
             chunk_overlap (int): number of characters to overlap between chunks
-            db_name (str): name of MongoDB database
-            collection_name (str): name of MongoDB collection
             model (str): sentence transformer model to use 
-            reset (bool, default False): if True, drop all documents from collection before adding new content
         '''
-        # self.db_name = db_name
-        # self.client = MongoClient(connection)
-        # self.collection = self.client[db_name][collection_name]
+        self.embedder = SentenceTransformer(model)
 
-        # chunk and put text in documents 
-        # idk the best way to do this
-        try:
-            chunks = chunk_doc(chunk_size, chunk_overlap, link = content, model = model)
-        except Exception:
-            try:
-                chunks = chunk_doc(chunk_size, chunk_overlap, document = content, model = model)
-            except Exception:
-                chunks = chunk_doc(chunk_size, chunk_overlap, pdf_path = content, model = model)
+        self.chunks_as_docs = chunk_doc(content, chunk_size, chunk_overlap, model)
+        # normalizing text here for for best keyword results from bm25
+        self.chunks_as_strings = [doc.page_content.replace('\n\n', ' 3') for doc in self.chunks_as_docs]
 
-        # # normalize text chunks
-        # # chunks = [normalize_text(chunk) for chunk in chunks]
+        self.bm25 = BM25Okapi([self.embedder.tokenizer.tokenize(string) for string in self.chunks_as_strings])
 
-        # # create documents
-        self.docs = [Document(page_content = chunk) for chunk in chunks]
+        self.corpora_embeddings = self.embedder.encode(self.chunks_as_strings)
 
-        # if reset:
-        #     self.remove_docs()
-        
-        # self.store = MongoDBAtlasVectorSearch(collection = self.collection, embedding = TransformerEmbeddings(model = model))
-        self.store = InMemoryVectorStore.from_documents(self.docs, embedding = TransformerEmbeddings(model))
-        self.bm25 = BM25Retriever.from_documents(self.docs)
-        # self.store = Chroma(collection = 'embeddings', embedding_function = TransformerEmbeddings(model), persist_directory = './embeddings')
-
-        # if reset:
-        # self.store.add_documents(documents = self.docs)
-            # self.store.persist()
-
-    def pipeline(self, query: str, context: str, llm, num_queries: int = 4, top_n: int = 4):
+    
+    def pipeline(self, chapter_name: str, llm: DeepEvalBaseLLM, top_n: int = 4) -> list[Document]:
         '''
-        Retrieval pipeline from original query
+        Retrieval pipeline using hybrid search 
 
         Args:
-            query (str): original prompt
-            context (str): (something)
+            chapter_name (str): name of chapter to retrieve docs for 
             llm: llm to use for generating queries
             num_queries (int, default 4): number of additional queries to generate
             top_n (int, default 4): top n documents to return
 
         Returns:
-            list[Document]: top_n documents
-        '''
-        q_prompt = f'''
-                    You are tasked with enhancing this {query} for a retrieval-augmented pipeline. Output {num_queries} additional queries.
-                    You can find relevant context here: {context}.
+            list[Document]: list of top n documents
 
-                    Output Format:
-                    query_1::query_2::query_3::query_4...::query_{num_queries}
-                    '''
+        '''
+
+        chapter_prompt = f'''
+                        Provide 10 questions for the topics of {chapter_name}. These should be very generic and simple questions. Provide your response as a list of questions using this format: question_1,question_2,question_3,question_4,question_5
+                        
+                        Additionally, the questions should only be on topics of {chapter_name}, not referencing anything residing outside that scope.
+
+                        For instance, if the chaper name is Sorting, some example questions may be:
+                        1. What is insertion sort?
+                        2. What is bubble sort?
+                        3. What is quick sort?
+                        4. What is merge sort?
+                        5. What is selection sort?
+
+                        As you can see, these example questions ask specfically about topics that object oriented programming cover, but do not reference anything outside that scope. 
+                        '''
+
+        response = llm.generate(chapter_prompt)
+        print('response is:', response)
         
-        queries = llm.invoke(q_prompt).content.split('::')
+        retrieved = set()
 
-        retrieved_docs = []
-        for q in queries:
-            semantic_docs, keyword_docs = self.invoke(q)
-            
-            for s in semantic_docs:
-                if s not in retrieved_docs:
-                    retrieved_docs.append((q, s))
+        for r in response.split(','):
+            s_docs = self.semantic_search(r) # returns list of dictionaries 
+            k_scores = self.keyword_search(normalize_text(r)) # returns ndarray of floats
+    
+            s_docs = [self.chunks_as_strings[d['corpus_id']] for d in s_docs[0]] # get docs by corpus id (index)
+    
+            k_docs = sorted(zip(self.chunks_as_strings, k_scores), key = lambda item: item[1], reverse = True) # sort documents by top keyword matches
+    
+            # k_docs from sorted(zip) is list of tuples so get only strings now
+            k_docs = [k_doc[0] for k_doc in k_docs]
+    
+            for s_doc, k_doc in zip(s_docs, k_docs):
+                retrieved.add((r, s_doc))
+                retrieved.add((r, k_doc))
 
-            for k in keyword_docs:
-                if k not in retrieved_docs:
-                    retrieved_docs.append((q, k))
-
-        # perform reranking and return
-        ranked_docs = rank_docs(retrieved_docs, top_n)
-
-        # convert scores/docs to only docs and return
-        return [t[0][1] for t in ranked_docs]
+        return rank_docs(list(retrieved))[:top_n]
 
 
-    def invoke(self, query: str, k: int = 4) -> tuple[list[Document], list[Document]]:
+    def semantic_search(self, query: str, k: int = 10):
         '''
-        Retrieves documents using hybrid search with keywords and semantic similarity
+        Retrieves documents using semantic search
 
         Args:
             query (str): query to retriever
             k (int, default 4): number of relevant docs to retrieve
 
         Returns:
-            tuple[list[Document], list[Document]]: documents from semantic search, documents from keyword search
+            list[dict[str, int | float]]
         '''
-        # query = normalize_text(text = query)
-        # print(f'Query after normalization:', query)
-        keyword_results = self.bm25.invoke(query)
-        similarity_results = self.store.similarity_search(query, k)
-
-        return (similarity_results, keyword_results)
+        embedded_query = self.embedder.encode(query, convert_to_tensor = True)
+        return util.semantic_search(embedded_query, self.corpora_embeddings, top_k = k)
 
 
+    def keyword_search(self, query: str):
+        '''
+        Retrieves documents using keyword search
 
-    def remove_docs(self):
-        '''Remove all documents from collection'''
-        self.collection.delete_many({})
+        Args:
+            query (str): query to retriever
+            k (int, default 4): number of relevant docs to retrieve
 
-
-
+        Returns:
+            list[float]
+        '''
+        return self.bm25.get_scores(self.embedder.tokenizer.tokenize(normalize_text(query))).tolist()

@@ -8,12 +8,11 @@ import hypernetx as hnx
 import matplotlib.pyplot as plt
 import graphlib
 from src.retrieval import RetrievalSystem
-# from langchain_core.documents import Document
-# from src.utils import rank_docs
 from deepeval.test_case import LLMTestCase
-import pymupdf
-from src.utils import process_sample, create_concept_graph_structure, clean, process_pair
+from src.utils import create_concept_graph_structure, clean, process_pair
 from concurrent.futures import ThreadPoolExecutor
+from src.utils import normalize_text
+from deepeval.models import DeepEvalBaseLLM
 
 
 # NOTE: Currently one main issue, the function that finds the associations between chapters seems to be broken. I think its the algorithm thats wrong. It also takes 10+ minutes to run
@@ -22,51 +21,37 @@ class relationExtractor:
     
     '''
     def __init__(self, 
-                document: str, 
-                token: str, 
+                documents: list[str] | str,  
                 chapters: list[str], 
-                connection_string: str,
                 chunk_size: int,
                 chunk_overlap: int,
-                db_name: str,
-                collection_name: str,
-                reset: bool = False,
-                openai_model: str = 'gpt-4o-mini',
-                st_model: str = 'all-MiniLM-L12-v2',
+                llm: DeepEvalBaseLLM, 
+                st_model: str = 'msmarco-distilbert-base-tas-b',
                 temp: int = 0):
         '''
         Constructor to create a large language model relation extractor class. 
 
         Args:
-            document (str): the string, web link, or pdf path to get information from
-            token (str): OpenAI token
+            documents (list[str] or str): the string, web link, or pdf path to get information from
             chapters (list): list of chapter/section names in link
-            connection_string (str): connection string to MongoDB 
             chunk_size (int): number of characters in a chunk of content
             chunk_overlap (int): number characters to overlap between content chunks
-            db_name (str): name of MongoDB database
-            collection_name (str): collection name of MongoDB database
-            reset (bool, default False): if True, drop all documents from collection before adding new ones
-            model (str, default gpt-4o-mini): OpenAI model to use 
+            llm (DeepEvalBaseLLM): LLM to use. Use one the preconfigured language model classes from src.llms and pass in your model name (optional)
+            st_model (str, default msmarco-distilbert-base-tas-b'): sentence transformer to use 
             temp (int, default 1): temperature to use with OpenAI model
         '''
-        if os.path.exists(document):
-            doc = pymupdf(document)
-            doc = ' '.join([page.get_text() for page in doc])
-            doc = doc.replace('\n', ' ')
-            self.document = doc
-        else:
-            self.document = document
+        if not isinstance(documents, list) and not isinstance(documents, str): 
+            raise ValueError(f'document must be of type list or str, got type {type(documents)}')
 
+        self.documents = documents
         self.chapters = chapters
-        self.openai_model = openai_model
+        self.temp = temp
         self.embedding_model = st_model
         self.concepts, self.outcomes, self.key_terms, self.retrieved_concept_context, self.retrieved_outcome_context, self.retrieved_term_context, self.terminology, self.kg, self.main_topics, self.dependencies, self.main_topic_relationships, self.summarization = None, None, None, None, None, None, None, None, None, None, None, None
 
-        os.environ['OPENAI_API_KEY'] = token
-        self.llm = ChatOpenAI(model = openai_model, max_tokens = None, temperature = temp)
+        self.llm = llm 
 
-        self.retriever = RetrievalSystem(connection_string, self.document, chunk_size, chunk_overlap, db_name, collection_name, st_model, reset)
+        self.retriever = RetrievalSystem(self.documents, chunk_size, chunk_overlap, st_model)
         
 
     def identify_key_terms(self, n_terms: int, input_type: str = 'chapter', chapter_name: str = None, concepts: list[list[str]] = None) -> list[str] | dict[str, list[str]]:
@@ -129,12 +114,12 @@ class relationExtractor:
         # else:
         #     raise ValueError(f'input_type value must be chapter or concepts, got {input_type}')
         if chapter_name is not None:
-            return self.llm.invoke(f'Identify {n_terms} key terms for {chapter_name}').content.split('\n')
+            return self.llm.generate(f'Identify {n_terms} key terms for {chapter_name}').split('\n')
 
         terms = []
         retrieved = {}
         for chapter in self.chapters:
-            relevant_docs = [doc.page_content for doc in self.retriever.pipeline(f'Identify {n_terms} key terms for chapter {chapter}.', self.document, self.llm)]
+            relevant_docs = [doc for doc in self.retriever.pipeline(chapter, self.llm)]
             retrieved[chapter] = relevant_docs
 
             prompt = f'''
@@ -150,7 +135,7 @@ class relationExtractor:
                     key term n
                     '''
 
-            words = self.llm.invoke(prompt).content
+            words = self.llm.generate(prompt)
             terms.append([string for string in words.split('\n') if string != ''])
 
         self.key_terms = terms
@@ -168,7 +153,7 @@ class relationExtractor:
         Returns:
             str: summary of textbook
         '''
-        self.summarization = self.llm.invoke(f"Please summarize this content: {self.document}").content
+        self.summarization = self.llm.generate(f"Please summarize this content: {self.document}")
         return self.summarization
 
 
@@ -231,7 +216,7 @@ class relationExtractor:
                     Format:
                     main topic :: justification
                   '''
-        main_topics = self.llm.invoke(prompt).content
+        main_topics = self.llm.generate(prompt)
 
         self.main_topics = [topic for topic in main_topics.split('\n') if topic != '']
         return [topic for topic in main_topics.split('\n') if topic != '']
@@ -253,7 +238,7 @@ class relationExtractor:
         for i in range(len(main_topic_list)):
             for j in range(len(main_topic_list)):
                 if i != j:
-                    relation = self.llm.invoke(f"Is there a relationship between this topic: {main_topic_list[i]}, and this topic: {main_topic_list[j]}? If there is NOT, please respond with 'No' and 'No' only.")
+                    relation = self.llm.generate(f"Is there a relationship between this topic: {main_topic_list[i]}, and this topic: {main_topic_list[j]}? If there is NOT, please respond with 'No' and 'No' only.")
                     relation = re.sub(re.compile('^[a-zA-Z\s\.,!?]'), '', relation)
                     if relation.split(',')[0].strip() != 'No':
                         topic_relations[main_topic_list[i]].append(main_topic_list[j])
@@ -281,7 +266,7 @@ class relationExtractor:
 
         for name in self.chapters:
             prompt = f'Identify {num_outcomes} learning outcomes from chapter {name}.'
-            relevant_docs = [doc.page_content for doc in self.retriever.pipeline(prompt, self.document, self.llm)]
+            relevant_docs = [doc for doc in self.retriever.pipeline(name, self.llm)]
         
             # # single shot prompt 
             single_prompt = f'''
@@ -301,7 +286,7 @@ class relationExtractor:
 
             retrieved_contexts[name] = relevant_docs
 
-            response = self.llm.invoke(single_prompt).content
+            response = self.llm.generate(single_prompt)
 
             outcome_list.append([outcome for outcome in response.split('\n') if outcome != ''])
 
@@ -331,7 +316,7 @@ class relationExtractor:
         #     raise ValueError(f'concepts and key_terms cannot both have a value. one of them must be None')
 
 
-    def identify_concepts(self, num_concepts: int) -> tuple[dict[str, str], list[list[str]]]:
+    def identify_concepts(self, num_concepts: int, top_n: int = 4) -> tuple[dict[str, str], list[list[str]]]:
         '''
         Identify the main learning concepts within the class provided link
 
@@ -346,14 +331,15 @@ class relationExtractor:
         retrieved_contexts = {}
 
         for name in self.chapters:
-            # prompt = f'Identify {num_concepts} learning concepts from chapter {name}.'
-            chapter_terms = ' '.join(self.identify_key_terms(num_concepts, chapter_name = name))
-            relevant_docs = [doc.page_content for doc in self.retriever.pipeline(chapter_terms, self.document, self.llm)]
+            prompt = f'Identify {num_concepts} learning concepts from chapter {name}.'
+            relevant_docs = [doc for doc in self.retriever.pipeline(name, self.llm, top_n)]
             
             # # single shot prompt 
             single_prompt = f'''
-                             Identify the {num_concepts} most important learning concepts for chapter: {name}. 
-                             The relevant context can be found here: {relevant_docs}. 
+                             Given the following context, please identify the {num_concepts} most important learning concepts related to the chapter on {name}. 
+                             Your response should directly reference key concepts from {name} using the context provided.
+
+                             Context: {relevant_docs}
                              
                              Additionally, use the following format for your response:
                              Concept 1,
@@ -364,11 +350,18 @@ class relationExtractor:
                              .
                              .
                              Concept n
+
+                             Example Output:
+                             Polymorphism,
+                             Inheritance,
+                             Classes,
+                             Objects,
+                             Encapsulation
                              '''
 
             retrieved_contexts[name] = relevant_docs
 
-            current_concept = self.llm.invoke(single_prompt).content
+            current_concept = self.llm.generate(single_prompt)
             concept_list.append([concept for concept in current_concept.split('\n') if concept != ''])
 
         self.concepts = concept_list
@@ -430,7 +423,7 @@ class relationExtractor:
             for j in range(i + 1, len(self.chapters)):
                 next_concept = ' '.join(content[j])
 
-                relation = self.llm.invoke(f"Identify if these concepts: {next_concept} are prerequisites for these concepts: {current_concept}. If there is NO prerequisite, respond with 'No' and 'No' only.").content
+                relation = self.llm.generate(f"Identify if these concepts: {next_concept} are prerequisites for these concepts: {current_concept}. If there is NO prerequisite, respond with 'No' and 'No' only.")
                 if relation.split(',')[0].strip() != 'No':
                     relations_dict[self.chapters[j]].append(self.chapters[i])
 
@@ -638,10 +631,25 @@ class relationExtractor:
             raise AttributeError('you must have at least one of the following functions ran to perform evaluation: identify_concepts, identify_outcomes, identify_key_terms')
 
         samples = []
-        for i in range(len(ground_truth)):
+        for i in range(len(self.chapters)):
             if type_eval == 'concepts': # concepts always come from web chapters
                 generated = ' '.join(self.concepts[i])
-                prompt = f'Identify the {num_generated} most important learning concepts for chapter {self.chapters[i]}. The relevant context can be found here: {self.retrieved_concept_context[list(self.retrieved_concept_context.keys())[i]]}.'            
+                prompt = f'''
+                Given the following context, please identify the {num_generated} most important learning concepts related to the chapter on {self.chapters[i]}. 
+                Your response should directly reference key concepts and terminology from the context provided.
+
+                Context: {self.retrieved_concept_context[list(self.retrieved_concept_context.keys())[i]]}
+                
+                Additionally, use the following format for your response:
+                Concept 1,
+                Concept 2,
+                Concept 3,
+                Concept 4,
+                .
+                .
+                .
+                Concept n
+                '''           
                 retrieved = self.retrieved_concept_context[list(self.retrieved_concept_context.keys())[i]]
 
             elif type_eval == 'outcomes':
@@ -658,12 +666,23 @@ class relationExtractor:
                 input = prompt, 
                 actual_output = generated,
                 retrieval_context = retrieved,
-                expected_output = ground_truth[i],
+                expected_output = ' '.join(ground_truth),
             ))
 
         results = []
         for sample in samples: # i would like to parallelize this but python is annoying about parallelization
-            results.extend(process_sample(metrics, sample))
+            for metric in metrics:
+                metric.measure(sample)
+                result = {
+                    'name': metric.__name__,
+                    'score': metric.score,
+                    'input': sample.input,
+                    'output': sample.actual_output,
+                    'success': metric.is_successful(),
+                    'reason': metric.reason,
+                    'expected': sample.expected_output,
+                }
+                results.append(result)
 
         return results
 
