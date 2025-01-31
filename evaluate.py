@@ -157,10 +157,10 @@ extractor = relationExtractor(link,
 print(f'Generating {testing} using extractor...')
 if testing == 'concepts':
     generated, retrieved = extractor.identify_concepts(num_generated)
-    actual = [c.split('::') for c in data['concepts']]
+    actual = [c.split('::') for c in data['concepts']][6]
 elif testing == 'outcomes':
     generated, retrieved = extractor.identify_outcomes(num_generated)
-    actual = [o.split('::') for o in data['outcomes']]
+    actual = [o.split('::') for o in data['outcomes']][6]
 else:
     generated, retrieved = extractor.identify_key_terms(num_generated)
 

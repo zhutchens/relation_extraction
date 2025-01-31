@@ -18,7 +18,7 @@ class RetrievalSystem:
         '''
         self.embedder = SentenceTransformer(model)
 
-        self.chunks_as_docs = chunk_doc(content, chunk_size, chunk_overlap, model)
+        self.chunks_as_docs = chunk_doc(content, chunk_size, chunk_overlap)
         # normalizing text here for for best keyword results from bm25
         self.chunks_as_strings = [doc.page_content.replace('\n\n', ' 3') for doc in self.chunks_as_docs]
 
