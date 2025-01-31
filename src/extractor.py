@@ -606,7 +606,7 @@ class relationExtractor:
     def evaluate(self, 
                 type_eval: str, 
                 num_generated: int,
-                ground_truth: list[list[str]], 
+                ground_truth: list[list[str]] | list[str], 
                 metrics: list
                 ) -> list[dict]:
         ''' 
@@ -661,7 +661,7 @@ class relationExtractor:
                 input = prompt, 
                 actual_output = generated,
                 retrieval_context = retrieved,
-                expected_output = ' '.join(ground_truth[i]),
+                expected_output = ' '.join(ground_truth[i]) if isinstance(ground_truth[0], list) else ' '.join(ground_truth),
             ))
 
         results = []

@@ -27,15 +27,14 @@ class RetrievalSystem:
         self.corpora_embeddings = self.embedder.encode(self.chunks_as_strings)
 
     
-    def pipeline(self, chapter_name: str, llm: DeepEvalBaseLLM, top_n: int = 4) -> list[Document]:
+    def pipeline(self, chapter_name: str, llm: DeepEvalBaseLLM, top_n: int = 8) -> list[Document]:
         '''
         Retrieval pipeline using hybrid search 
 
         Args:
             chapter_name (str): name of chapter to retrieve docs for 
             llm: llm to use for generating queries
-            num_queries (int, default 4): number of additional queries to generate
-            top_n (int, default 4): top n documents to return
+            top_n (int, default 8): top n documents to return
 
         Returns:
             list[Document]: list of top n documents
@@ -63,7 +62,7 @@ class RetrievalSystem:
         retrieved = set()
 
         for r in response.split(','):
-            s_docs = self.semantic_search(r) # returns list of dictionaries 
+            s_docs = self.semantic_search(normalize_text(r)) # returns list of dictionaries 
             k_scores = self.keyword_search(normalize_text(r)) # returns ndarray of floats
     
             s_docs = [self.chunks_as_strings[d['corpus_id']] for d in s_docs[0]] # get docs by corpus id (index)

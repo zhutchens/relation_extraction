@@ -19,3 +19,7 @@ torch==2.6.0
 transformers==4.48.1
 unstructured==0.16.17
 validators==0.34.0
+fastjsonschema==2.21.1
+lm-format-enforcer==0.10.9
+python-magic
+python-magic-bin

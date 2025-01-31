@@ -61,7 +61,7 @@ def rank_docs(queries_and_docs) -> list[Document]:
     return [doc for (query, doc), score in sorted_docs]
 
 
-def chunk_doc(documents: list[str] | str, chunk_size: int, chunk_overlap: int, model: str) -> list[Document]:
+def chunk_doc(documents: list[str] | str, chunk_size: int, chunk_overlap: int) -> list[Document]:
     '''
     Chunks an entire document
 
@@ -69,7 +69,6 @@ def chunk_doc(documents: list[str] | str, chunk_size: int, chunk_overlap: int, m
         documents (list[str] | str): documents to chunk
         chunk_size (int): number of characters in a chunk
         chunk_overlap (int): number characters that overlap between chunks
-        model (str): sentence transformer model to use for text splitting
 
     Returns:
         list[str]: list of text chunks

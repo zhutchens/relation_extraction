@@ -17,7 +17,12 @@ for textbook in "${TEXTBOOKS[@]}"
 do
     for test in "${TESTS[@]}"
     do
-        python3 evaluate.py $TEMPERATURE $SENTENCE_TRANSFORMER $textbook $test $NUM_GENERATE $THRESHOLD
+        if [ "$OSTYPE" == "msys" ];
+        then
+            python evaluate.py $TEMPERATURE $SENTENCE_TRANSFORMER $textbook $test $NUM_GENERATE $THRESHOLD
+        else
+            python3 evaluate.py $TEMPERATURE $SENTENCE_TRANSFORMER $textbook $test $NUM_GENERATE $THRESHOLD
+        fi
     done
 done
 
