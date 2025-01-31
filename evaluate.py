@@ -147,7 +147,7 @@ else:
 
 print('Constructing extractor...')
 extractor = relationExtractor(link, 
-                            [chapters] if isinstance(chapters, list) else chapters, 
+                            [chapters] if isinstance(chapters, str) else chapters, 
                             CHUNK_SIZE, 
                             CHUNK_OVERLAP, 
                             OpenAIModel(),
