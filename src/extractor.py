@@ -1,4 +1,3 @@
-from langchain_openai.chat_models import ChatOpenAI
 import graphviz
 import os
 import re
@@ -11,7 +10,6 @@ from src.retrieval import RetrievalSystem
 from deepeval.test_case import LLMTestCase
 from src.utils import create_concept_graph_structure, clean, process_pair
 from concurrent.futures import ThreadPoolExecutor
-from src.utils import normalize_text
 from deepeval.models import DeepEvalBaseLLM
 
 

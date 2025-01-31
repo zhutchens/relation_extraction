@@ -10,8 +10,6 @@ from unstructured.cleaners.core import clean_extra_whitespace, clean_non_ascii_c
 import os
 import validators
 from string import punctuation
-from sentence_transformers import SentenceTransformer
-from src.transformerEmbeddings import TransformerEmbeddings
 
 
 def process_pair(first, second, llm):

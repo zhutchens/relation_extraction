@@ -1,9 +1,7 @@
 from src.utils import normalize_text, chunk_doc, rank_docs
 from sentence_transformers import SentenceTransformer, util
-from src.transformerEmbeddings import TransformerEmbeddings
 from rank_bm25 import BM25Okapi
 from langchain_core.documents import Document
-import sys
 from deepeval.models import DeepEvalBaseLLM
 
 
