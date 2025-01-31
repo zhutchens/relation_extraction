@@ -13,11 +13,11 @@ TESTS=("concepts" "outcomes")
 # testing top three most performant sentence transformers
 SENTENCE_TRANSFORMER="msmarco-distilbert-base-tas-b"
 
-for textbook in TEXTBOOKS
+for textbook in "${TEXTBOOKS[@]}"
 do
-    for test in TESTS
+    for test in "${TESTS[@]}"
     do
-        python3 evaluate.py $TEMPERATURE $SENTENCE_TRANSFORMER $textbook $test $NUM_GENERATE
+        python3 evaluate.py $TEMPERATURE $SENTENCE_TRANSFORMER $textbook $test $NUM_GENERATE $THRESHOLD
     done
 done
 

@@ -40,6 +40,7 @@ import pandas as pd
 import os
 from src.llms import OpenAIModel, HuggingFaceLLM
 
+print('Loading environment variables...')
 load_dotenv()
 link = getenv(textbook) # Testing 2214 data structures textbook here
 token = getenv('OPENAI_API_KEY')
@@ -136,6 +137,7 @@ chapters = chapters[6]
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
 
+print('Loading data...')
 data = pd.read_csv('data/dsa_clifford_a_shaffer_3_2_java.csv')
 
 if testing == 'concepts':
@@ -143,14 +145,16 @@ if testing == 'concepts':
 else:
     actual = data['outcomes']
 
+print('Constructing extractor...')
 extractor = relationExtractor(link, 
-                            [chapters], 
+                            [chapters] if isinstance(chapters, list) else chapters, 
                             CHUNK_SIZE, 
                             CHUNK_OVERLAP, 
                             OpenAIModel(),
                             )
 
 
+print(f'Generating {testing} using extractor...')
 if testing == 'concepts':
     generated, retrieved = extractor.identify_concepts(num_generated)
     actual = [c.split['::'] for c in data['concepts']]
@@ -169,6 +173,7 @@ if not os.path.exists('./results'):
 else:
     os.chdir('./results/')
 
+print('Writing results to file...')
 with open(f'results_{textbook}_{testing}_{st_model}_{extractor.llm.get_model_name()}.txt', 'w') as f:
     f.write('-' * 20 + '\n')
     f.write(f'OPENAI MODEL: {extractor.llm.get_model_name()}\n')
