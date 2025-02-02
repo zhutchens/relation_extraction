@@ -19,33 +19,39 @@ class relationExtractor:
     
     '''
     def __init__(self, 
-                documents: list[str] | str,  
-                chapters: list[str], 
+                documents: list[str] | str, 
+                syllabus: str, 
+                chapters: list[str] | list[list[str]], 
                 chunk_size: int,
                 chunk_overlap: int,
                 llm: DeepEvalBaseLLM, 
                 st_model: str = 'msmarco-distilbert-base-tas-b',
-                temp: int = 0):
+                ):
         '''
         Constructor to create a large language model relation extractor class. 
 
         Args:
             documents (list[str] or str): the string, web link, or pdf path to get information from
-            chapters (list): list of chapter/section names in link
+            syllabus (str): document syllabus (path, pdf, or string)
+            chapters (list[str] or list[list[str]]): list of chapter/section names in link
             chunk_size (int): number of characters in a chunk of content
             chunk_overlap (int): number characters to overlap between content chunks
             llm (DeepEvalBaseLLM): LLM to use. Use one the preconfigured language model classes from src.llms and pass in your model name (optional)
             st_model (str, default msmarco-distilbert-base-tas-b'): sentence transformer to use 
-            temp (int, default 1): temperature to use with OpenAI model
+
         '''
         if not isinstance(documents, list) and not isinstance(documents, str): 
             raise ValueError(f'document must be of type list or str, got type {type(documents)}')
 
         self.documents = documents
+        self.syllabus = syllabus
         self.chapters = chapters
-        self.temp = temp
+         
         self.embedding_model = st_model
-        self.concepts, self.outcomes, self.key_terms, self.retrieved_concept_context, self.retrieved_outcome_context, self.retrieved_term_context, self.terminology, self.kg, self.main_topics, self.dependencies, self.main_topic_relationships, self.summarization = None, None, None, None, None, None, None, None, None, None, None, None
+        self.terminology, self.kg, self.main_topics, self.dependencies, self.main_topic_relationships, self.summarization = None, None, None, None, None, None
+
+        self.concepts, self.outcomes, self.key_terms = [], [], []
+        self.retrieved_concept_context, self.retrieved_outcome_context, self.retrieved_term_context = {}, {}, {}
 
         self.llm = llm 
 
@@ -113,12 +119,10 @@ class relationExtractor:
         #     raise ValueError(f'input_type value must be chapter or concepts, got {input_type}')
         if chapter_name is not None:
             return self.llm.generate(f'Identify {n_terms} key terms for {chapter_name}').split('\n')
-
-        terms = []
-        retrieved = {}
+        
         for chapter in self.chapters:
             relevant_docs = [doc for doc in self.retriever.pipeline(chapter, self.llm)]
-            retrieved[chapter] = relevant_docs
+            self.retrieved_term_context[chapter] = relevant_docs
 
             prompt = f'''
                     Identify {n_terms} key terms for chapter {chapter}. 
@@ -134,11 +138,9 @@ class relationExtractor:
                     '''
 
             words = self.llm.generate(prompt)
-            terms.append([string for string in words.split('\n') if string != ''])
+            self.key_terms.append([string for string in words.split('\n') if string != ''])
 
-        self.key_terms = terms
-        self.retrieved_term_context = retrieved
-        return terms, retrieved
+        return self.key_terms, self.retrieved_term_context
 
 
     def summarize(self) -> str:
@@ -155,52 +157,9 @@ class relationExtractor:
         return self.summarization
 
 
-    # def create_chapter_dict(self, outcomes: list[str], concepts: list[str]) -> dict[str, tuple[str, str]]:
-    #     '''
-    #     Create a chapter dictionary containing the chapter names as keys and its concepts and outcomes in a tuple as the value
-
-    #     Args:
-    #         outcomes (list[str]): a list of learning outcomes created from the identify_learning_outcomes function
-    #         concepts (list[str]): a list of learning concepts created from the identify_learning_concepts function
-
-    #     Returns:
-    #         dict[str, tuple[str, str]]: dictionary containing chapter names as keys and concepts/outcomes as tuple
-    #     '''
-    #     outcome_concept_graph = {}
-
-    #     for idx, name in enumerate(self.chapters):
-    #         outcome_concept_graph[name] = (concepts[idx], outcomes[idx])
-                
-    #     return outcome_concept_graph
-        
-    # note: fix later
-    # def identify_chapters(self) -> dict[str, str]:
-    #     '''
-    #     Identify the chapters within the class provided link using a large language model
-    #     It is very, very inconsistent and I highly recommened manually creating the dictionary
-
-    #     Args:
-    #         None
-
-    #     Returns:
-    #         dict[str, str]: key is chapter number, value is chapter name
-    #     '''
-    #     # NOTE: This is very, very, inconsistent. Do not recommend using this.
-
-    #     # chapters = self.llm.invoke(f"Please identify the chapters in this textbook: {self.document}").content
-    #     chapters = self.llm.invoke().content
-    #     chapters = chapters.split('\n')
-    #     chapter_dict = {}
-        
-    #     for idx, chapter in enumerate(chapters):
-    #         chapter_dict[f"Chapter {idx + 1}"] = chapter
-
-    #     return chapter_dict
-
-
     def identify_main_topics(self) -> list[str]:
         '''
-        Identify the main topics within the class provided link
+        Identify the main topics from the syllabus
 
         Args:
             None
@@ -208,16 +167,16 @@ class relationExtractor:
         Returns:
             list[str]: list of main topics 
         '''
-
         prompt = f'''
-                    Please identify the main topics from this textbook: {self.document}. Please provide justification.
-                    Format:
-                    main topic :: justification
-                  '''
-        main_topics = self.llm.generate(prompt)
+                    Please identify the main topics from this syllabus: {self.syllabus}
 
-        self.main_topics = [topic for topic in main_topics.split('\n') if topic != '']
-        return [topic for topic in main_topics.split('\n') if topic != '']
+                    Format:
+                    first main topic::second main topic::...nth math topic
+
+                    Example:
+                    Trees::Grass::Leaves::Photosynthesis
+                  '''
+        return self.llm.generate(prompt).split('::')
     
     
     def identify_main_topic_relations(self, main_topic_list: list[str]) -> dict[str, list[str]]:
@@ -258,40 +217,43 @@ class relationExtractor:
             list[list[str]]: list of learning outcomes for each concept (or for each chapter if both args are None)\n
             dict[tuple[str, str], list[str]]: main concept and terms as key, list of outcomes as value
         '''
-        outcome_list = []
-        retrieved_contexts = {}
         # if concepts is None and concepts_keyTerms is None:
 
         for name in self.chapters:
-            prompt = f'Identify {num_outcomes} learning outcomes from chapter {name}.'
             relevant_docs = [doc for doc in self.retriever.pipeline(name, self.llm)]
         
             # # single shot prompt 
             single_prompt = f'''
-                            Identify the {num_outcomes} most important learning outcomes for chapter: {name}. 
-                            The relevant context can be found here: {relevant_docs}
+                             Given the following context, please identify the {num_outcomes} most important learning outcomes related to the chapter on {name}. 
+                             Your response should directly reference key outcomes from {name} using the context provided.
 
-                            Additionally, use the following format for your response:
-                            Outcome 1,
-                            Outcome 2,
-                            Outcome 3,
-                            Outcome 4,
-                            .
-                            .
-                            .
-                            Outcome n
-                            '''
+                             Context: {relevant_docs}
+                             
+                             Additionally, use the following format for your response:
+                             Outcome 1,
+                             Outcome 2,
+                             Outcome 3,
+                             Outcome 4,
+                             .
+                             .
+                             .
+                             Outcome n
 
-            retrieved_contexts[name] = relevant_docs
+                             Example Output:
+                             Demonstrate an understanding of polymorphism,
+                             Demonstrate an ability to implement inheritance,
+                             Demonstrate an ability to write classes,
+                             Demonstrate an understanding of objects,
+                             Explain core concepts behind encapsulation
+                             '''
+
+            self.retrieved_outcome_context[name] = relevant_docs
 
             response = self.llm.generate(single_prompt)
 
-            outcome_list.append([outcome for outcome in response.split('\n') if outcome != ''])
+            self.outcomes.append([outcome for outcome in response.split('\n') if outcome != ''])
 
-        self.outcomes = outcome_list
-        self.retrieved_outcome_context = retrieved_contexts
-
-        return outcome_list, retrieved_contexts
+        return self.outcomes, self.retrieved_outcome_context
         
         # elif concepts is not None and concepts_keyTerms is None:
         #     for concept in concepts:
@@ -314,7 +276,7 @@ class relationExtractor:
         #     raise ValueError(f'concepts and key_terms cannot both have a value. one of them must be None')
 
 
-    def identify_concepts(self, num_concepts: int, top_n: int = 4) -> tuple[dict[str, str], list[list[str]]]:
+    def identify_concepts(self, num_concepts: int) -> tuple[dict[str, str], list[list[str]]]:
         '''
         Identify the main learning concepts within the class provided link
 
@@ -324,13 +286,8 @@ class relationExtractor:
         Returns:
             tuple[dict[str, str], list[list[str]]]: retrieved contexts and list of concepts for each chapter
         '''
-        concept_list = []
-        current_concept = ''
-        retrieved_contexts = {}
-
         for name in self.chapters:
-            prompt = f'Identify {num_concepts} learning concepts from chapter {name}.'
-            relevant_docs = [doc for doc in self.retriever.pipeline(name, self.llm, top_n)]
+            relevant_docs = [doc for doc in self.retriever.pipeline(name, self.llm)]
             
             # # single shot prompt 
             single_prompt = f'''
@@ -357,15 +314,12 @@ class relationExtractor:
                              Encapsulation
                              '''
 
-            retrieved_contexts[name] = relevant_docs
+            self.retrieved_concept_context[name] = relevant_docs
 
             current_concept = self.llm.generate(single_prompt)
-            concept_list.append([concept for concept in current_concept.split('\n') if concept != ''])
+            self.concepts.append([concept for concept in current_concept.split('\n') if concept != ''])
 
-        self.concepts = concept_list
-        self.retrieved_concept_context = retrieved_contexts
-
-        return concept_list, retrieved_contexts
+        return self.concepts, self.retrieved_concept_context
 
     
     # def get_assocations(self, first: list[list[str]] | list[str], second: list[list[str]] | list[str]) -> list[str]:

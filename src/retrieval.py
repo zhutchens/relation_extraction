@@ -27,20 +27,18 @@ class RetrievalSystem:
         self.corpora_embeddings = self.embedder.encode(self.chunks_as_strings)
 
     
-    def pipeline(self, chapter_name: str, llm: DeepEvalBaseLLM, top_n: int = 8) -> list[Document]:
+    def pipeline(self, chapter_name: str, llm: DeepEvalBaseLLM) -> list[Document]:
         '''
         Retrieval pipeline using hybrid search 
 
         Args:
             chapter_name (str): name of chapter to retrieve docs for 
             llm: llm to use for generating queries
-            top_n (int, default 8): top n documents to return
 
         Returns:
             list[Document]: list of top n documents
 
         '''
-
         chapter_prompt = f'''
                         Provide 10 questions for the topics of {chapter_name}. These should be very generic and simple questions. Provide your response as a list of questions using this format: question_1,question_2,question_3,question_4,question_5
                         
@@ -76,7 +74,7 @@ class RetrievalSystem:
                 retrieved.add((r, s_doc))
                 retrieved.add((r, k_doc))
 
-        return rank_docs(list(retrieved))[:top_n]
+        return rank_docs(list(retrieved))
 
 
     def semantic_search(self, query: str, k: int = 10):
