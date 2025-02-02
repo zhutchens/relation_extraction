@@ -38,7 +38,7 @@ class RetrievalSystem:
         Returns:
             list[Document]: list of top n documents
 
-        '''
+        ''' 
         chapter_prompt = f'''
                         Provide 10 questions for the topics of {chapter_name}. These should be very generic and simple questions. Provide your response as a list of questions using this format: question_1,question_2,question_3,question_4,question_5
                         

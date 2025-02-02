@@ -23,7 +23,7 @@ def process_pair(first, second, llm):
 
         Q: Is there an is-a relationship presnet between {first} and {second}?
         '''
-    response = llm.invoke(prompt).content
+    response = llm.generate(prompt)
     return (first, second) if 'yes' in response.lower() else None
 
 

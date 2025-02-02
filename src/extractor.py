@@ -11,6 +11,8 @@ from deepeval.test_case import LLMTestCase
 from src.utils import create_concept_graph_structure, clean, process_pair
 from concurrent.futures import ThreadPoolExecutor
 from deepeval.models import DeepEvalBaseLLM
+from langchain_community.document_loaders import UnstructuredURLLoader, UnstructuredFileLoader
+import validators
 
 
 # NOTE: Currently one main issue, the function that finds the associations between chapters seems to be broken. I think its the algorithm thats wrong. It also takes 10+ minutes to run
@@ -32,19 +34,25 @@ class relationExtractor:
 
         Args:
             documents (list[str] or str): the string, web link, or pdf path to get information from
-            syllabus (str): document syllabus (path, pdf, or string)
+            syllabus (str): document syllabus (link, file, or string)
             chapters (list[str] or list[list[str]]): list of chapter/section names in link
             chunk_size (int): number of characters in a chunk of content
             chunk_overlap (int): number characters to overlap between content chunks
             llm (DeepEvalBaseLLM): LLM to use. Use one the preconfigured language model classes from src.llms and pass in your model name (optional)
             st_model (str, default msmarco-distilbert-base-tas-b'): sentence transformer to use 
-
         '''
         if not isinstance(documents, list) and not isinstance(documents, str): 
             raise ValueError(f'document must be of type list or str, got type {type(documents)}')
 
         self.documents = documents
-        self.syllabus = syllabus
+
+        if os.path.exists(syllabus):
+            self.syllabus = UnstructuredFileLoader(syllabus).load()
+        elif validators.url(syllabus):
+            self.syllabus = UnstructuredURLLoader([syllabus]).load()
+        else:
+            self.syllabus = syllabus
+
         self.chapters = chapters
          
         self.embedding_model = st_model
@@ -119,7 +127,7 @@ class relationExtractor:
         #     raise ValueError(f'input_type value must be chapter or concepts, got {input_type}')
         if chapter_name is not None:
             return self.llm.generate(f'Identify {n_terms} key terms for {chapter_name}').split('\n')
-        
+
         for chapter in self.chapters:
             relevant_docs = [doc for doc in self.retriever.pipeline(chapter, self.llm)]
             self.retrieved_term_context[chapter] = relevant_docs
@@ -168,7 +176,7 @@ class relationExtractor:
             list[str]: list of main topics 
         '''
         prompt = f'''
-                    Please identify the main topics from this syllabus: {self.syllabus}
+                    Please identify the main learning topics from this syllabus: {self.syllabus}
 
                     Format:
                     first main topic::second main topic::...nth math topic
@@ -356,26 +364,31 @@ class relationExtractor:
     #     return associations
 
 
-    def identify_dependencies(self, content: list[list[str]]) -> dict[str, list[str]]:
+    def identify_dependencies(self, build_using: str = 'concepts') -> dict[str, list[str]]:
         '''
         Identify the dependency relationships between chapters
 
         Args: 
-            content (list[list[str]]): key terms, outcomes, or concepts to be used to identify chapter dependencies 
+            build_using (str, default concepts): what build dependencies with. options: concepts, outcomes
 
         Returns:
             dict[str, list[str]]: depedencies between chapters as adjacency list
         '''
+        if build_using != 'concepts' and build_using != 'outcomes':
+            raise ValueError('build_using must be concepts or outcomes')
+
         relation = ''
 
         relations_dict = create_concept_graph_structure(self.chapters)
 
         for i in range(len(self.chapters)):
-            current_concept = ' '.join(content[i])
+            # current_concept = ' '.join(content[i])
+            current = ' '.join(self.concepts[i] if build_using == 'concepts' else self.outcomes[i])
             for j in range(i + 1, len(self.chapters)):
-                next_concept = ' '.join(content[j])
+                # next_concept = ' '.join(content[j])
+                next_ = ' '.join(self.concepts[j] if build_using == 'concepts' else self.outcomes[j])
 
-                relation = self.llm.generate(f"Identify if these concepts: {next_concept} are prerequisites for these concepts: {current_concept}. If there is NO prerequisite, respond with 'No' and 'No' only.")
+                relation = self.llm.generate(f"Identify if these {build_using}: {next_} are prerequisites for these {build_using}: {current}. If there is NO prerequisite, respond with 'No' and 'No' only.")
                 if relation.split(',')[0].strip() != 'No':
                     relations_dict[self.chapters[j]].append(self.chapters[i])
 
@@ -527,34 +540,43 @@ class relationExtractor:
         if self.terminology is None:
             raise AttributeError('self.terminiology not found, run build_terminology first')
 
-        network = Network(notebook = True, cdn_resources = 'remote', layout = 'hierarchical')
-        nodes = set()
-        edges = set()
-        node_ids = {}
+        # network = Network(notebook = True, cdn_resources = 'remote')
+        tree = graphviz.Digraph()
 
-        i = 0 # for node ids # for node ids
         for first, second in self.terminology:
-            if first not in nodes:
-                network.add_node(i, label = first)
-                nodes.add(first)
-                node_ids[first] = i
-                i += 1
+            tree.node(name = first)
+            tree.node(name = second)
+            tree.edge(second, first)
+        
+        display(Image(tree.pipe(format = "png", renderer = "cairo", engine = 'dot')))
 
-            if second not in nodes:
-                network.add_node(i, label = second)
-                nodes.add(second)
-                node_ids[second] = i
-                i += 1
+        # nodes = set()
+        # edges = set()
+        # node_ids = {}
 
-            if (first, second) not in edges:
-                edges.add((node_ids[first], node_ids[second]))
-                network.add_edge(node_ids[first], node_ids[second])
+        # i = 0 # for node ids # for node ids
+        # for first, second in self.terminology:
+        #     if first not in nodes:
+        #         network.add_node(i, label = first)
+        #         nodes.add(first)
+        #         node_ids[first] = i
+        #         i += 1
+
+        #     if second not in nodes:
+        #         network.add_node(i, label = second)
+        #         nodes.add(second)
+        #         node_ids[second] = i
+        #         i += 1
+
+        #     if (first, second) not in edges:
+        #         edges.add((node_ids[first], node_ids[second]))
+        #         network.add_edge(node_ids[first], node_ids[second])
 
         if not os.path.exists('./visualizations/'):
             os.mkdir('./visualizations/')
 
         # network.repulsion()
-        display(network.show('./visualizations/tree_hierarchy.html'))
+        # display(network.show('./visualizations/tree_hierarchy.html'))
 
 
     def evaluate(self, 
@@ -636,29 +658,29 @@ class relationExtractor:
         return results
 
 
-    def build_terminology(self) -> list[tuple[str, str]]:
+    def build_terminology(self, build_using: str = 'concepts') -> list[tuple[str, str]]:
         '''
         Build terminology using key terms and is-a relationships 
 
         Args:
-            terms (list[list[str]]): key terms to use
+            build_using (str, default concepts):
 
         Returns:
             list[tuple[str, str]]: is-a relationships 
         '''
-        if self.key_terms is None:
+        if not self.key_terms and not self.concepts:
             # should i do it for them here
-            raise AttributeError('self.key_terms not found. Run identify_key_terms() first')
+            raise AttributeError('identify_key_terms or identify_concepts must be ran first')
 
         terminology = set()
-        terms = [clean(word) for l in self.key_terms for word in l]
+        data = [clean(word) for l in (self.concepts if build_using == 'concepts' else self.key_terms) for word in l]
 
-        with ThreadPoolExecutor(max_workers = len(terms)) as p:
+        with ThreadPoolExecutor(max_workers = len(data)) as p:
             futures = []
-            for i in range(len(terms)):
-                for j in range(len(terms)):
+            for i in range(len(data)):
+                for j in range(len(data)):
                     if i != j:
-                        future = p.submit(process_pair, terms[i], terms[j], self.llm)
+                        future = p.submit(process_pair, data[i], data[j], self.llm)
                         futures.append(future)
 
             for f in futures:
