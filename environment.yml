@@ -2,5 +2,7 @@ name: env
 dependencies:
 - python==3.10.12
 - pip
+- tesseract
+- poppler
 - pip:
   - -r requirements.txt

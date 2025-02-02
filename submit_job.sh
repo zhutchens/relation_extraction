@@ -1,6 +1,7 @@
 #! /bin/bash
 
-#SBATCH --job-name="RAG_Eval"
+#SBATCH --job-name=rag_eval
+#SBATCH --gres=gpu:1
 #SBATCH --partition=GPU
 #SBATCH --nodes=1
 #SBATCH --time=1:00:00
