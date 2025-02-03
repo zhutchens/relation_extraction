@@ -55,7 +55,6 @@ class RetrievalSystem:
                         '''
 
         response = llm.generate(chapter_prompt)
-        print('response is:', response)
         
         retrieved = set()
 

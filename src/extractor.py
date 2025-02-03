@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from deepeval.models import DeepEvalBaseLLM
 from langchain_community.document_loaders import UnstructuredURLLoader, UnstructuredFileLoader
 import validators
+import pandas as pd
 
 
 # NOTE: Currently one main issue, the function that finds the associations between chapters seems to be broken. I think its the algorithm thats wrong. It also takes 10+ minutes to run
@@ -184,10 +185,12 @@ class relationExtractor:
                     Example:
                     Trees::Grass::Leaves::Photosynthesis
                   '''
-        return self.llm.generate(prompt).split('::')
+        main_topics = self.llm.generate(prompt).split('::')
+        self.main_topics = main_topics
+        return self.main_topics
     
     
-    def identify_main_topic_relations(self, main_topic_list: list[str]) -> dict[str, list[str]]:
+    def identify_main_topic_relations(self) -> dict[str, list[str]]:
         '''
         Identify the relationships between the main topics of the textbook
 
@@ -197,16 +200,16 @@ class relationExtractor:
         Returns:
             dict[str, list[str]]: relationships between main topics as adjacency list
         '''
-        topic_relations = create_concept_graph_structure(main_topic_list)
+        topic_relations = create_concept_graph_structure(self.main_topics)
 
         relation = ''
-        for i in range(len(main_topic_list)):
-            for j in range(len(main_topic_list)):
+        for i in range(len(self.main_topics)):
+            for j in range(len(self.main_topics)):
                 if i != j:
-                    relation = self.llm.generate(f"Is there a relationship between this topic: {main_topic_list[i]}, and this topic: {main_topic_list[j]}? If there is NOT, please respond with 'No' and 'No' only.")
+                    relation = self.llm.generate(f"Is there a relationship between this topic: {self.main_topics[i]}, and this topic: {self.main_topics[j]}? If there is NOT, please respond with 'No' and 'No' only.")
                     relation = re.sub(re.compile('^[a-zA-Z\s\.,!?]'), '', relation)
                     if relation.split(',')[0].strip() != 'No':
-                        topic_relations[main_topic_list[i]].append(main_topic_list[j])
+                        topic_relations[self.main_topics[i]].append(self.main_topics[j])
 
         self.main_topic_relationships = topic_relations
         return topic_relations
@@ -396,22 +399,19 @@ class relationExtractor:
         return relations_dict
 
 
-    def draw_graph(self) -> None:
+    def draw_graph(self, data: dict[str, list[str]]) -> None:
         '''
         Print a directed graph using the dependency dictionary
 
         Args:
-            concept_graph: The dictionary to build the graph from. This should come from either the identify_associations function or identify_dependencies function
+            concept_graph: the dictionary to build the graph from
         
         Returns:
             None
         '''
-        if self.dependencies is None:
-            raise AttributeError('self.dependencies not found, run identify_dependencies first')
-
         graph = graphviz.Digraph()
 
-        for key, values in self.dependencies.items():
+        for key, values in data.items():
             graph.node(name = key)
             for value in values:
                 graph.edge(key, value)
@@ -478,27 +478,24 @@ class relationExtractor:
         # return dependency_graph
     
 
-    def draw_hypergraph(self) -> None:
+    def draw_hypergraph(self, data: dict[str, list[str]]) -> None:
         '''
         Generate and display a hypergraph
 
         Args:
-            None
+            data: (dict[str, list[str]]): data to build hypergraph from
 
         Returns:
             None
-        '''
-        if self.dependencies is None:
-            raise AttributeError('self.dependencies not found, run identify_dependencies first')
-                
-        sorted_dependencies = graphlib.TopologicalSorter(self.dependencies)
+        '''     
+        sorted_dependencies = graphlib.TopologicalSorter(data)
         sorted_dependencies = tuple(sorted_dependencies.static_order())
 
         temp = sorted_dependencies
         sorted_dependencies = {}
 
         for value in temp:
-            sorted_dependencies[value] = self.dependencies[value]
+            sorted_dependencies[value] = data[value]
 
         hypergraph = hnx.Hypergraph(sorted_dependencies)
         hnx.draw(hypergraph)
@@ -770,23 +767,46 @@ class relationExtractor:
             os.mkdir('./visualizations/')
 
         self.kg.repulsion(spring_length = 250)
+
+        if not os.path.exists('./visualizations/'):
+            os.mkdir('./visualizations/')
+
         display(self.kg.show('./visualizations/kg.html'))
 
 
-    # def generate_testset(self, size: int = 10) -> DataFrame:
-    #     '''
-    #     Generates a testset for evaluation based on given link
+    def visualize_results(self, results_dict: list[dict]) -> None:
+        '''
+        Visualize results after evaluation using heatmap
 
-    #     Args:
-    #         size (int, default 10): number of samples
+        Args:
+            results_dict (list[dict]): list of dictionaries with test case results
 
-    #     Returns:
-    #         DataFrame: dataframe of samples
-    #     '''
-    #     gen = TestsetGenerator(LangchainLLMWrapper(self.llm), 
-    #                           LangchainEmbeddingsWrapper(TransformerEmbeddings()))
+        Returns:
+            None
+        '''
+        p_scores = [d['score'] for d in results_dict if d['name'] == 'Contextual Precision']
+        recall_scores = [d['score'] for d in results_dict if d['name'] == 'Contextual Recall']
+        ar_scores = [d['score'] for d in results_dict if d['name'] == 'Answer Relevancy']
+        ac_scores = [d['score'] for d in results_dict if d['name'] == 'Answer Correctness']
+        s_scores = [d['score'] for d in results_dict if d['name'] == 'SemanticSimilarity']
+        f_scores = [d['score'] for d in results_dict if d['name'] == 'Faithfulness']
 
-    #     ds = gen.generate_with_langchain_docs(documents = self.vs.docs, testset_size = size)
+        figs, ax = plt.subplots(1, 1)
+        ax[0].plot(p_scores, label = 'Contextual Precison')
+        ax[0].plot(recall_scores, label = 'Contextual Recall')
+        ax[0].plot(ar_scores, label = 'Answer Relevancy')
+        ax[0].plot(ac_scores, label = 'Answer Correctness')
+        ax[0].plot(s_scores, label = 'Semantic Similarity')
+        ax[0].plot(f_scores, label = 'Faithfulness')
+        ax[0].set_title('metric scores across chapters')
+        ax[0].set_xlabel('Chapter')
+        ax[0].set_ylabel('Score')
+        
+        plt.legend()
+        plt.show()
 
-    #     return ds.to_pandas()
-    
+        if not os.path.exists('./visualizations/'):
+            os.mkdir('./visualizations/')
+
+        plt.savefig('./visualizations/results.png')
+        
