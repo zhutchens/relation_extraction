@@ -12,7 +12,7 @@ TESTS=("concepts" "outcomes")
 
 # testing top three most performant sentence transformers
 SENTENCE_TRANSFORMERS=("msmarco-distilbert-base-tas-b" "msmarco-MiniLM-L-6-v3" "msmarco-MiniLM-L-12-v3" "msmarco-distilbert-base-v4")
-LANGUAGE_MODELS = ("gpt-4o" "gpt-4o-mini")
+LANGUAGE_MODELS=("gpt-4o" "gpt-4o-mini")
 
 for textbook in "${TEXTBOOKS[@]}"
 do
