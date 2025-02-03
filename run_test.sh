@@ -11,29 +11,19 @@ TEXTBOOKS=("dsa_2214")
 TESTS=("concepts" "outcomes")
 
 # testing top three most performant sentence transformers
-SENTENCE_TRANSFORMER="msmarco-distilbert-base-tas-b"
+SENTENCE_TRANSFORMERS=("msmarco-distilbert-base-tas-b" "msmarco-MiniLM-L-6-v3" "msmarco-MiniLM-L-12-v3" "msmarco-distilbert-base-v4")
+LANGUAGE_MODELS = ("gpt-4o" "gpt-4o-mini")
 
 for textbook in "${TEXTBOOKS[@]}"
 do
     for test in "${TESTS[@]}"
     do
-        if [ "$OSTYPE" == "msys" ];
-        then
-            python evaluate.py $TEMPERATURE $SENTENCE_TRANSFORMER $textbook $test $NUM_GENERATE $THRESHOLD
-        else
-            python3 evaluate.py $TEMPERATURE $SENTENCE_TRANSFORMER $textbook $test $NUM_GENERATE $THRESHOLD
-        fi
+        for llm in "${LANGUAGE_MODELS[@]}"
+        do
+            for transformer in "${SENTENCE_TRANSFORMERS[@]}"
+            do
+                python evaluate.py $llm $TEMPERATURE $transformer $textbook $test $NUM_GENERATE $THRESHOLD
+            done
+        done
     done
 done
-
-# for textbook in TEXTBOOKS
-# do 
-#     for transformer in SENTENCE_TRANSFORMERS
-#     do
-#         for test in TESTS
-#         do
-#             # usage: <llm_temperature> <sentence_transformer_model> <which_textbook> <what_to_test> <num_to_generate> <threshold>
-#             python3 evaluate.py 
-#         done
-#     done
-# done

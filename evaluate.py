@@ -1,7 +1,8 @@
 import sys
-if len(sys.argv) <= 6 or len(sys.argv) >= 8:
+if len(sys.argv) <= 7 or len(sys.argv) >= 9:
     print('usage: <llm_temperature> <sentence_transformer_model> <which_textbook> <what_to_test> <num_to_generate> <threshold>')
     print('---Argument explanations---')
+    print('\tllm: language model to use')
     print('\tllm_temperature: temperature to use with openai model')
     print('\tsentence_transformer_model: sentence transformer model to use for embeddings')
     print('\twhich textbook to use for evaluation, options: dsa_2214, dsa_6114, cs_3190')
@@ -11,10 +12,11 @@ if len(sys.argv) <= 6 or len(sys.argv) >= 8:
 
     sys.exit()
 
-temp = float(sys.argv[1])
-st_model = sys.argv[2]
+llm = sys.argv[1]
+temp = float(sys.argv[2])
+st_model = sys.argv[3]
 
-textbook = sys.argv[3]
+textbook = sys.argv[4]
 if textbook != 'dsa_6114' and textbook != 'cs_3190' and textbook != 'dsa_2214':
     print('invalid textbook arg. use dsa_2214, dsa_6114, or cs_3190')
     sys.exit()
@@ -22,13 +24,13 @@ if textbook != 'dsa_6114' and textbook != 'cs_3190' and textbook != 'dsa_2214':
 if textbook == 'dsa_6114' or textbook == 'cs_3190':
     raise NotImplementedError('Textbooks currently do not have any associated data. Please use dsa_2214 in the meantime')
 
-testing = sys.argv[4]
+testing = sys.argv[5]
 if testing != 'concepts' and testing != 'outcomes' and testing != 'outcomes':
     print('invalid what_to_test arg. use concepts, outcomes, or key_terms')
     sys.exit()
 
-num_generated = int(sys.argv[5])
-threshold = float(sys.argv[6])
+num_generated = int(sys.argv[6])
+threshold = float(sys.argv[7])
 
 
 from src.extractor import relationExtractor
@@ -150,7 +152,7 @@ extractor = relationExtractor(link,
                             [chapters] if isinstance(chapters, str) else chapters, 
                             CHUNK_SIZE, 
                             CHUNK_OVERLAP, 
-                            OpenAIModel(),
+                            OpenAIModel(model_name = llm),
                             )
 
 
