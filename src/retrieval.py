@@ -8,13 +8,15 @@ from deepeval.models import DeepEvalBaseLLM
 class RetrievalSystem:
     def __init__(self, content: str | list[str], chunk_size: int, chunk_overlap: int, model: str) -> None:
         '''
-        Construct a retrieval system using MongoDB Atlas
+        Construct a retrieval system using sentence transformers 
 
         Args:
             content (list[str] | str): content to use in retrieval system. Available options are pdf paths, text string, or web links
             chunk_size (itn): number of characters to have in a chunk of the content
             chunk_overlap (int): number of characters to overlap between chunks
             model (str): sentence transformer model to use 
+
+        https://sbert.net/examples/applications/retrieve_rerank/README.html
         '''
         self.embedder = SentenceTransformer(model)
 

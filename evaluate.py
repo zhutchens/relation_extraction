@@ -32,22 +32,20 @@ if testing != 'concepts' and testing != 'outcomes' and testing != 'outcomes':
 num_generated = int(sys.argv[6])
 threshold = float(sys.argv[7])
 
+from dotenv import load_dotenv
+from os import environ, getenv
+load_dotenv()
+environ['OPENAI_API_KEY'] = getenv('OPENAI_API_KEY')
 
 from src.extractor import relationExtractor
-from dotenv import load_dotenv
-from os import getenv, environ
 from deepeval.metrics import AnswerRelevancyMetric, ContextualPrecisionMetric, ContextualRecallMetric, FaithfulnessMetric
-from src.metrics import SemanticSimilarity
+from src.metrics import SemanticSimilarity, AnswerCorrectness
 import pandas as pd
 import os
 from src.llms import OpenAIModel, HuggingFaceLLM
 
 print('Loading environment variables...')
-load_dotenv()
 link = getenv(textbook) # Testing 2214 data structures textbook here
-token = getenv('OPENAI_API_KEY')
-environ['OPENAI_API_KEY'] = token
-connection = getenv('connection_string')
  
 if textbook == 'dsa_2214':
     chapters = [
@@ -135,7 +133,6 @@ elif textbook == 'cs_3190':
         'Cascading'
     ]
 
-chapters = chapters[6]
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
 
@@ -149,24 +146,26 @@ else:
 
 print('Constructing extractor...')
 extractor = relationExtractor(link, 
+                            'a syllbus is supposed to go here!',
                             [chapters] if isinstance(chapters, str) else chapters, 
                             CHUNK_SIZE, 
                             CHUNK_OVERLAP, 
                             OpenAIModel(model_name = llm),
+                            st_model,
                             )
 
 
 print(f'Generating {testing} using extractor...')
 if testing == 'concepts':
     generated, retrieved = extractor.identify_concepts(num_generated)
-    actual = [c.split('::') for c in data['concepts']][6]
+    actual = [c.split('::') for c in data['concepts']]
 elif testing == 'outcomes':
     generated, retrieved = extractor.identify_outcomes(num_generated)
-    actual = [o.split('::') for o in data['outcomes']][6]
+    actual = [o.split('::') for o in data['outcomes']]
 else:
     generated, retrieved = extractor.identify_key_terms(num_generated)
 
-metrics = [SemanticSimilarity(st_model = extractor.embedding_model), AnswerRelevancyMetric(model = extractor.llm), FaithfulnessMetric(model = extractor.llm), ContextualPrecisionMetric(model = extractor.llm), ContextualRecallMetric(model = extractor.llm)]
+metrics = [SemanticSimilarity(st_model = extractor.embedding_model), AnswerRelevancyMetric(model = extractor.llm), AnswerCorrectness(model = extractor.llm), FaithfulnessMetric(model = extractor.llm), ContextualPrecisionMetric(model = extractor.llm), ContextualRecallMetric(model = extractor.llm)]
 results = extractor.evaluate(testing, num_generated, actual, metrics = metrics)
 
 if not os.path.exists('./results'):
@@ -183,9 +182,12 @@ with open(f'results_{textbook}_{testing}_{st_model}_{extractor.llm.get_model_nam
     f.write(f'SENTENCE TRANSFORMER: {extractor.embedding_model}\n')
     f.write(f'TEXTBOOK: {textbook}\n')
     f.write(f'CHAPTERS TESTED: {extractor.chapters}\n')
+    f.write(f'CHUNK SIZE: {CHUNK_SIZE}\n')
+    f.write(f'CHUNK OVERLAP: {CHUNK_OVERLAP}\n')
     f.write('-' * 20 + '\n')
 
     averages = {}
+    i = 0
     for r in results:
         query = r['input']
         output = r['output']
@@ -195,7 +197,8 @@ with open(f'results_{textbook}_{testing}_{st_model}_{extractor.llm.get_model_nam
         expected = r['expected']
 
         f.write('-' * 20 + '\n')
-        f.write(f'{name} ---> SCORE: {score} ---> {"FAILURE" if score < threshold else "SUCCESS"}\n')
+        f.write(f'CHAPTER: {extractor.chapters[i]}\n')
+        f.write(f'METRIC: {name} ---> SCORE: {score} ---> {"FAILURE" if score < threshold else "SUCCESS"}\n')
         f.write('\n')
         f.write(f'REASON: {reason}\n')
         f.write('\n')
@@ -210,6 +213,9 @@ with open(f'results_{textbook}_{testing}_{st_model}_{extractor.llm.get_model_nam
             averages[name] = score
         else:
             averages[name] += score
+
+        if i % len(metrics) == 0 and i != 0:
+            i += 1 # we have 5 metrics so each chapter should get 5 writes
 
     for k in averages.keys():
         averages[k] /= len(extractor.chapters) # calculate average metric scores across all chapters

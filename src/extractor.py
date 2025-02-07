@@ -13,7 +13,8 @@ from concurrent.futures import ThreadPoolExecutor
 from deepeval.models import DeepEvalBaseLLM
 from langchain_community.document_loaders import UnstructuredURLLoader, UnstructuredFileLoader
 import validators
-import pandas as pd
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 
 
 # NOTE: Currently one main issue, the function that finds the associations between chapters seems to be broken. I think its the algorithm thats wrong. It also takes 10+ minutes to run
@@ -22,30 +23,30 @@ class relationExtractor:
     
     '''
     def __init__(self, 
-                documents: list[str] | str, 
-                syllabus: str, 
                 chapters: list[str] | list[list[str]], 
                 chunk_size: int,
                 chunk_overlap: int,
                 llm: DeepEvalBaseLLM, 
+                textbooks: list[str] | str,
+                syllabus: str = None,
                 st_model: str = 'msmarco-distilbert-base-tas-b',
                 ):
         '''
         Constructor to create a large language model relation extractor class. 
 
         Args:
-            documents (list[str] or str): the string, web link, or pdf path to get information from
-            syllabus (str): document syllabus (link, file, or string)
             chapters (list[str] or list[list[str]]): list of chapter/section names in link
             chunk_size (int): number of characters in a chunk of content
             chunk_overlap (int): number characters to overlap between content chunks
             llm (DeepEvalBaseLLM): LLM to use. Use one the preconfigured language model classes from src.llms and pass in your model name (optional)
+            textbooks (list[str] | str): textbooks to use 
+            syllabus (str, default None): syllabus to use
             st_model (str, default msmarco-distilbert-base-tas-b'): sentence transformer to use 
         '''
-        if not isinstance(documents, list) and not isinstance(documents, str): 
-            raise ValueError(f'document must be of type list or str, got type {type(documents)}')
+        if not isinstance(textbooks, list) and not isinstance(textbooks, str): 
+            raise ValueError(f'document must be of type list or str, got type {type(textbooks)}')
 
-        self.documents = documents
+        self.textbooks = textbooks
 
         if os.path.exists(syllabus):
             self.syllabus = UnstructuredFileLoader(syllabus).load()
@@ -64,7 +65,167 @@ class relationExtractor:
 
         self.llm = llm 
 
-        self.retriever = RetrievalSystem(self.documents, chunk_size, chunk_overlap, st_model)
+        self.retriever = RetrievalSystem(self.textbooks, chunk_size, chunk_overlap, st_model)
+
+    
+    def syllabus_pipline(self) -> tuple:
+        '''
+        This pipeline extracts main learning topics and objectives from syllabus, clusters them with relevant terms, and returns
+
+        Args:
+            None
+
+        Returns:
+            tuple: clusters, cluster hierarchy, cluster objectives, syllabus objectives, syllabus main topics
+        '''
+        if self.syllabus is None:
+            print('syllabus attribute cannot be None')
+
+        if self.textbooks is None:
+            print('textbooks attribute cannot be None')
+
+        # task a
+        self.identify_main_topics() 
+        
+        objective_prompt = f'''
+                Identify the learning objectives from this syllabus: {self.syllabus}
+
+                Format:
+                objective_1::objective_2::objective_3...objective_n
+                '''
+
+        # task b
+        syllabus_objectives = self.llm.generate(objective_prompt) 
+
+        topic_objectives = {}
+        topic_relationships = {}
+        clusters = []
+
+        for topic in self.main_topics: 
+            # task c. i
+            print('topic:', topic)
+            topic_context = self.retriever.pipeline(topic, self.llm) 
+            key_points = self.llm.generate(f'''Extract learning key points from this context: {topic_context}. 
+                                               
+                                               Response Format:
+                                               point1::point2::point3::...pointN
+                                            ''')
+
+            # task c. ii
+            relevant_terms = self.llm.generate(f''' 
+                                                Extract relevant terms from these key points: {key_points}
+
+                                                Format:
+                                                term_1::term_2::term_3::...term_n
+                                                ''').split('::') # task c. ii
+
+            # task c. iii
+            scores = []
+            term_embeddings = self.retriever.embedder.encode(relevant_terms) # pca here?
+
+            for i in range(2, 11):
+                kmeans = KMeans(n_clusters = i, random_state = 1).fit(term_embeddings)
+                scores.append(silhouette_score(term_embeddings, kmeans.labels_))
+            
+            optimal_k = scores.index(max(scores)) + 2
+
+            kmeans = KMeans(optimal_k, random_state = 1).fit(term_embeddings)
+            preds = kmeans.predict(term_embeddings).tolist()
+            print('relevant terms:', relevant_terms)
+
+            topic_clusters = {}
+            for i in range(1, optimal_k + 1):
+                topic_clusters[f'Cluster {i}'] = []
+
+                for j in range(len(preds)):
+                    if preds[j] == i:
+                        topic_clusters[f'Cluster {i}'].append(relevant_terms[j])
+            
+            clusters.append(topic_clusters)
+
+            print('clusters:', topic_clusters)
+            print('-' * 20)
+
+            # task c. iv (i feel like i did this is incorrect)
+            topic_relationships[topic] = []
+
+            for v in topic_clusters.values():
+                for next_v in topic_clusters.values():
+                    if v != next_v:
+                        response = self.llm.generate(f'Identify if these values: {v} have an is-a relationship with these values: {next_v}. You should only respond with True or False')
+                        if response == 'True':
+                            topic_relationships[topic].append((v, next_v))
+
+            # task c. v
+            topic_objectives[topic] = self.llm.generate(f'Extract relevant learning objectives from {topic}')
+
+        # task d
+        
+        return clusters, topic_relationships, topic_objectives, syllabus_objectives, self.main_topics
+    
+
+    def from_question(self, question: str) -> tuple[list[str], list[str]]:
+        '''
+        Retrieves learning concepts and outcomes this question addresses
+
+        Args:
+            question (str): question to assess
+
+        Returns:
+            tuple: concepts and outcomes
+        '''
+        prompt = '''
+                Given this question: {}, extract relevant learning {} this assesses
+
+                Response format:
+                {}_1::{}_2::{}_3::...{}_n
+                '''
+        outcomes = self.llm.generate(prompt.format(question, 'outcomes', 'outcomes', 'outcomes', 'outcomes', 'outcomes')).split('::')
+        concepts = self.llm.generate(prompt.format(question, 'concepts', 'concepts', 'concepts', 'concepts', 'concepts')).split('::')
+        return (concepts, outcomes)
+
+
+    def get_misconceptions(self, question: str, answer: str) -> str:
+        '''
+        Retrieves student misconceptions given a question and answer
+
+        Args:
+            question (str): question given to student
+            answer (str): student answer
+
+        Returns:
+            str: misconceptions 
+        '''
+        return self.llm.generate(f'Given this question: {question}, and this student response: {answer}, provide misconceptions the student may have about the question and topic.')
+
+
+    def textbook_pipline(self) -> tuple[list[list[str]], list[list[str]], dict[str, list[str]]]:
+        '''
+        In this pipeline, learning concepts and outcomes are extracted from each chapter and evaluated. Chapter dependencies are also created using the learning concepts
+
+        Plots will be generated for chapter dependencies, concept hierachy, and knowledge graph. Concept hierarchies and knowledge graphs will be in ./visualizations/
+
+        Args:
+            None
+
+        Returns:
+            tuple[list[list[str]], list[list[str]], dict[str, list[str]]]: concepts, outcomes, dependencies 
+        '''
+        if self.textbooks is None:
+            print('textbooks attribute cannot be None')
+
+        self.identify_concepts(10)
+        self.identify_outcomes(10)
+
+        self.identify_dependencies()
+        self.build_terminology()
+        self.build_knowledge_graph()
+
+        self.draw_graph()
+        self.draw_hierarchy()
+        self.draw_knowledge_graph()
+
+        return self.concepts, self.outcomes 
         
 
     def identify_key_terms(self, n_terms: int, input_type: str = 'chapter', chapter_name: str = None, concepts: list[list[str]] = None) -> list[str] | dict[str, list[str]]:
@@ -603,7 +764,7 @@ class relationExtractor:
             if type_eval == 'concepts': # concepts always come from web chapters
                 generated = ' '.join(self.concepts[i])
                 prompt = f'''
-                Given the following context, please identify the {num_generated} most important learning concepts related to the chapter on {self.chapters[i]}. 
+                Given the following context, please identify the {num_generated} most important learning concepts related to {self.chapters[i]}. 
                 Your response should directly reference key concepts and terminology from the context provided.
 
                 Context: {self.retrieved_concept_context[list(self.retrieved_concept_context.keys())[i]]}
@@ -672,7 +833,7 @@ class relationExtractor:
         terminology = set()
         data = [clean(word) for l in (self.concepts if build_using == 'concepts' else self.key_terms) for word in l]
 
-        with ThreadPoolExecutor(max_workers = len(data)) as p:
+        with ThreadPoolExecutor(max_workers = min(4, len(data))) as p:
             futures = []
             for i in range(len(data)):
                 for j in range(len(data)):
