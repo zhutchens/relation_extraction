@@ -8,7 +8,7 @@ st_model = sys.argv[2]
 course = sys.argv[3]
 threshold = sys.argv[4]
 
-from src.extractor import RAGKGGenerator
+from src.generator import RAGKGGenerator
 from os import getenv, environ
 from dotenv import load_dotenv
 from src.metrics import AnswerCorrectness, SemanticSimilarity

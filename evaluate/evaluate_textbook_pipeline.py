@@ -37,7 +37,7 @@ from os import environ, getenv
 load_dotenv()
 environ['OPENAI_API_KEY'] = getenv('OPENAI_API_KEY')
 
-from src.extractor import RAGKGGenerator
+from src.generator import RAGKGGenerator
 from deepeval.metrics import AnswerRelevancyMetric, ContextualPrecisionMetric, ContextualRecallMetric, FaithfulnessMetric
 from src.metrics import SemanticSimilarity, AnswerCorrectness
 import pandas as pd
