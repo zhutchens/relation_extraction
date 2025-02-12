@@ -37,7 +37,7 @@ from os import environ, getenv
 load_dotenv()
 environ['OPENAI_API_KEY'] = getenv('OPENAI_API_KEY')
 
-from src.extractor import relationExtractor
+from src.extractor import RAGKGGenerator
 from deepeval.metrics import AnswerRelevancyMetric, ContextualPrecisionMetric, ContextualRecallMetric, FaithfulnessMetric
 from src.metrics import SemanticSimilarity, AnswerCorrectness
 import pandas as pd
@@ -145,13 +145,12 @@ else:
     actual = data['outcomes']
 
 print('Constructing extractor...')
-extractor = relationExtractor(link, 
-                            'a syllbus is supposed to go here!',
-                            [chapters] if isinstance(chapters, str) else chapters, 
+extractor = RAGKGGenerator([chapters] if isinstance(chapters, str) else chapters, 
                             CHUNK_SIZE, 
                             CHUNK_OVERLAP, 
                             OpenAIModel(model_name = llm),
-                            st_model,
+                            textbooks = link,
+                            st_model = st_model,
                             )
 
 

@@ -5,6 +5,7 @@ from IPython.display import display, Image
 from pyvis.network import Network
 import hypernetx as hnx
 import matplotlib.pyplot as plt
+import plotly.express as px 
 import graphlib
 from src.retrieval import RetrievalSystem
 from deepeval.test_case import LLMTestCase
@@ -13,12 +14,14 @@ from concurrent.futures import ThreadPoolExecutor
 from deepeval.models import DeepEvalBaseLLM
 from langchain_community.document_loaders import UnstructuredURLLoader, UnstructuredFileLoader
 import validators
-from sklearn.cluster import KMeans
+from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
+from sklearn.decomposition import PCA
+from scipy.cluster.hierarchy import dendrogram, linkage
 
 
 # NOTE: Currently one main issue, the function that finds the associations between chapters seems to be broken. I think its the algorithm thats wrong. It also takes 10+ minutes to run
-class relationExtractor:
+class RAGKGGenerator:
     '''
     
     '''
@@ -58,7 +61,9 @@ class relationExtractor:
         self.chapters = chapters
          
         self.embedding_model = st_model
-        self.terminology, self.kg, self.main_topics, self.dependencies, self.main_topic_relationships, self.summarization = None, None, None, None, None, None
+
+        # this seems like bad practice but whatever lol
+        self.terminology, self.kg, self.main_topics, self.dependencies, self.main_topic_relationships, self.summarization, self.build_terminology_embeddings = None, None, None, None, None, None, None
 
         self.concepts, self.outcomes, self.key_terms = [], [], []
         self.retrieved_concept_context, self.retrieved_outcome_context, self.retrieved_term_context = {}, {}, {}
@@ -70,13 +75,13 @@ class relationExtractor:
     
     def syllabus_pipline(self) -> tuple:
         '''
-        This pipeline extracts main learning topics and objectives from syllabus, clusters them with relevant terms, and returns
+        This pipeline extracts main learning topics and objectives from syllabus, clusters them with relevant terms, and builds a knowledge graph 
 
         Args:
             None
 
         Returns:
-            tuple: clusters, cluster hierarchy, cluster objectives, syllabus objectives, syllabus main topics
+            Network: pyvis network 
         '''
         if self.syllabus is None:
             print('syllabus attribute cannot be None')
@@ -93,58 +98,48 @@ class relationExtractor:
                 Format:
                 objective_1::objective_2::objective_3...objective_n
                 '''
-
+            # for v in topic_clusters.values():
+            #     for next_v in topic_clusters.values():
+            #         if v != next_v:
+            #             response = self.llm.generate(f'Identify if these values: {v} have an is-a relationship with these values: {next_v}. You should only respond with True or False')
+            #             if response == 'True':
+            #                 topic_relationships[topic].append((v, next_v))
         # task b
         syllabus_objectives = self.llm.generate(objective_prompt) 
 
-        topic_objectives = {}
+        topic_objectives = []
         topic_relationships = {}
+        topic_key_points = []
         clusters = []
+        self.pcas = []
 
         for topic in self.main_topics: 
             # task c. i
-            print('topic:', topic)
+            # print('topic:', topic)
             topic_context = self.retriever.pipeline(topic, self.llm) 
             key_points = self.llm.generate(f'''Extract learning key points from this context: {topic_context}. 
                                                
                                                Response Format:
                                                point1::point2::point3::...pointN
-                                            ''')
+                                            ''').split('::')
+
+            topic_key_points.append(key_points)
 
             # task c. ii
             relevant_terms = self.llm.generate(f''' 
-                                                Extract relevant terms from these key points: {key_points}
+                                                Extract semantically similar terms from these key points: {key_points}
+                                                Relevant context: {topic_context}
 
                                                 Format:
                                                 term_1::term_2::term_3::...term_n
                                                 ''').split('::') # task c. ii
 
-            # task c. iii
-            scores = []
-            term_embeddings = self.retriever.embedder.encode(relevant_terms) # pca here?
-
-            for i in range(2, 11):
-                kmeans = KMeans(n_clusters = i, random_state = 1).fit(term_embeddings)
-                scores.append(silhouette_score(term_embeddings, kmeans.labels_))
-            
-            optimal_k = scores.index(max(scores)) + 2
-
-            kmeans = KMeans(optimal_k, random_state = 1).fit(term_embeddings)
-            preds = kmeans.predict(term_embeddings).tolist()
-            print('relevant terms:', relevant_terms)
-
-            topic_clusters = {}
-            for i in range(1, optimal_k + 1):
-                topic_clusters[f'Cluster {i}'] = []
-
-                for j in range(len(preds)):
-                    if preds[j] == i:
-                        topic_clusters[f'Cluster {i}'].append(relevant_terms[j])
-            
+            # task c. iii 
+            topic_clusters = self.build_terminology(relevant_terms)
             clusters.append(topic_clusters)
 
-            print('clusters:', topic_clusters)
-            print('-' * 20)
+            # print('cluster:', topic_cluster)
+            # print('-' * 20)
 
             # task c. iv (i feel like i did this is incorrect)
             topic_relationships[topic] = []
@@ -157,13 +152,26 @@ class relationExtractor:
                             topic_relationships[topic].append((v, next_v))
 
             # task c. v
-            topic_objectives[topic] = self.llm.generate(f'Extract relevant learning objectives from {topic}')
+            topic_objectives.append(self.llm.generate(f'Extract relevant learning objectives from {topic}'))
 
         # task d
-        
-        return clusters, topic_relationships, topic_objectives, syllabus_objectives, self.main_topics
-    
+        # print('part d')
+        # for first_topic, second_topic in topic_relationships:
+        #     print('first:', first_topic, 'second:', second_topic)
+        #     semantic_relationships = self.llm.generate(f'List semantic relationships beyond the is-a relationship between this pair {first_topic}, {second_topic}:')
+        #     print(semantic_relationships)
+        #     print('-' * 20)
 
+        self.clusters = clusters # for cluster visualization
+
+        self.topic_key_points = topic_key_points
+        self.topic_objectives = topic_objectives
+        self.identify_dependencies(dependencies_from = 'topics')
+        self.kg = self.build_knowledge_graph(self.dependencies, self.topic_key_points, self.topic_objectives)
+
+        return self.kg
+
+    
     def from_question(self, question: str) -> tuple[list[str], list[str]]:
         '''
         Retrieves learning concepts and outcomes this question addresses
@@ -174,14 +182,25 @@ class relationExtractor:
         Returns:
             tuple: concepts and outcomes
         '''
-        prompt = '''
-                Given this question: {}, extract relevant learning {} this assesses
+        if not self.concepts:
+            self.identify_concepts(10)
+        if not self.outcomes:
+            self.identify_outcomes(10)
 
-                Response format:
-                {}_1::{}_2::{}_3::...{}_n
-                '''
-        outcomes = self.llm.generate(prompt.format(question, 'outcomes', 'outcomes', 'outcomes', 'outcomes', 'outcomes')).split('::')
-        concepts = self.llm.generate(prompt.format(question, 'concepts', 'concepts', 'concepts', 'concepts', 'concepts')).split('::')
+        concept_prompt = f'''
+                        Given this question: {question}, list relevant learning concepts from this list of learning concepts that it assess. 
+
+                        Learning concepts: {self.concepts}
+                        '''
+
+        outcome_prompt = f'''
+                        Given this question: {question}, list relevant learning outcomes from this list of learning outcomes that it assess. 
+
+                        Learning outcomes: {self.outcomes}
+                        '''
+
+        outcomes = self.llm.generate(outcome_prompt).split('::')
+        concepts = self.llm.generate(concept_prompt).split('::')
         return (concepts, outcomes)
 
 
@@ -198,6 +217,89 @@ class relationExtractor:
         '''
         return self.llm.generate(f'Given this question: {question}, and this student response: {answer}, provide misconceptions the student may have about the question and topic.')
 
+    
+    def visualize_hierarchy(self, terminology: dict[str, list[str]], visual_type: str = 'sunburst'):
+        '''
+        Visualizes hierarchy from build_terminology using sunburst chart or cluster map
+
+        Args:
+            terminology (dict[str, list[str]]): clusters and their terms 
+            cluster_predictions (list[int]): list of cluster predictions 
+            visualize_type (str, default sunburst): type of visualization to use (sunburst/cluster map)
+
+        Returns:
+            None
+        '''
+        if visual_type.lower() == 'sunburst':
+            # df = DataFrame(terminology)
+
+            # columns = ['type']
+            # for i in range(len(terminology[list(terminology.keys())[0]])):
+            #     columns.append(f'term {i}')
+            # df.columns = columns
+            data = {
+                'terms': [word for l in terminology.values() for word in l],
+                'parent': [],
+            }
+            fig = px.sunburst()
+            fig.show()
+
+        else:   
+            # show dendrogram and clusters for agglomerative clustering
+            for pca, word in zip(self.pcas, self.main_topics):
+                fig, ax = plt.subplots(1, 2, figsize = (12, 6))
+                ax[0].scatter(pca[:, 0], pca[:, 1], c = self.ac.fit_predict(pca), cmap = 'viridis')
+                ax[0].set_title(f'Clusters for main topic: {word}')
+
+                matrix = linkage(pca, method = 'ward')
+                dendrogram(matrix, ax = ax[1])
+                ax[1].set_title(f'Dendrogram for main topic: {word}')
+
+                plt.tight_layout()
+                plt.show()
+
+
+            
+    def build_terminology(self, build_using: list[str]) -> dict[str, list[str]]:
+        '''
+        Builds hierarchy of concepts or terms using hierarchical clustering
+
+        Args:
+            build_using (list[str]): strings to build clusters with 
+
+        Returns:
+            tuple[dict[str, list[str]], list[int]]: clusters, cluster number predictions 
+        '''
+        scores = []
+        pca = PCA()
+
+        # need to use this in visualize_hierarchy, dont want to add it as a param (something else to return!)
+        self.build_terminology_embeddings = pca.fit_transform(self.retriever.embedder.encode(build_using))
+        self.pcas.append(self.build_terminology_embeddings)
+
+        # finding optimal number of clusters using silhouette scores
+        for i in range(2, 6):
+            ac = AgglomerativeClustering(i).fit(self.build_terminology_embeddings)
+            scores.append(silhouette_score(self.build_terminology_embeddings, ac.labels_))
+        
+        optimal_k = scores.index(max(scores)) + 1 # account for indices starting at 0 
+
+        self.ac = AgglomerativeClustering(optimal_k)
+        preds = ac.fit_predict(self.build_terminology_embeddings).tolist()
+
+        topic_clusters = {}
+        for i in range(1, optimal_k + 1):
+            # choose type based on term closest to center of cluster
+            # ex. topic_clusters[term closest to center] = []
+            topic_clusters[f'Cluster {i}'] = []
+
+            for j in range(len(preds)):
+                if preds[j] == i:
+                    topic_clusters[f'Cluster {i}'].append(build_using[j])
+
+        # return topic_clusters, preds 
+        return topic_clusters
+        
 
     def textbook_pipline(self) -> tuple[list[list[str]], list[list[str]], dict[str, list[str]]]:
         '''
@@ -218,16 +320,13 @@ class relationExtractor:
         self.identify_outcomes(10)
 
         self.identify_dependencies()
-        self.build_terminology()
-        self.build_knowledge_graph()
+        # self.build_terminology()
 
-        self.draw_graph()
-        self.draw_hierarchy()
-        self.draw_knowledge_graph()
+        self.kg = self.build_knowledge_graph(self.dependencies, self.concepts, self.outcomes)
 
-        return self.concepts, self.outcomes 
+        return self.kg
+
         
-
     def identify_key_terms(self, n_terms: int, input_type: str = 'chapter', chapter_name: str = None, concepts: list[list[str]] = None) -> list[str] | dict[str, list[str]]:
         '''
         Identify the key terms for a chapter or group of concepts
@@ -325,6 +424,27 @@ class relationExtractor:
         '''
         self.summarization = self.llm.generate(f"Please summarize this content: {self.document}")
         return self.summarization
+
+    
+    def objectives_from_syllabus(self):
+        '''
+        Identify objectives from syllabus
+
+        Args:
+            None
+
+        Returns:
+            list[str]: list of objectives from syllabus
+        '''
+        prompt = f'''
+        Identify the main learning objectives from the provided syllabus.
+
+        Syllabus: {self.syllabus}
+
+        Response Format:
+        objective_1::objective_2::objective_3::...objective_n
+        '''
+        return self.llm.generate(prompt).split('::')
 
 
     def identify_main_topics(self) -> list[str]:
@@ -528,12 +648,13 @@ class relationExtractor:
     #     return associations
 
 
-    def identify_dependencies(self, build_using: str = 'concepts') -> dict[str, list[str]]:
+    def identify_dependencies(self, build_using: str = 'concepts', dependencies_from: str = 'chapters') -> dict[str, list[str]]:
         '''
-        Identify the dependency relationships between chapters
+        Identify the dependency relationships between chapters or topics 
 
         Args: 
             build_using (str, default concepts): what build dependencies with. options: concepts, outcomes
+            dependencies_from (str, default chapters): what to be dependencies on. (chapters/topics)
 
         Returns:
             dict[str, list[str]]: depedencies between chapters as adjacency list
@@ -543,24 +664,36 @@ class relationExtractor:
 
         relation = ''
 
-        relations_dict = create_concept_graph_structure(self.chapters)
+        
+        if dependencies_from.lower() == 'chapters':
+            relations_dict = create_concept_graph_structure(self.chapters)
+            for i in range(len(self.chapters)):
+                # current_concept = ' '.join(content[i])
+                current = ' '.join(self.concepts[i] if build_using == 'concepts' else self.outcomes[i])
+                for j in range(i + 1, len(self.chapters)):
+                    # next_concept = ' '.join(content[j])
+                    next_ = ' '.join(self.concepts[j] if build_using == 'concepts' else self.outcomes[j])
 
-        for i in range(len(self.chapters)):
-            # current_concept = ' '.join(content[i])
-            current = ' '.join(self.concepts[i] if build_using == 'concepts' else self.outcomes[i])
-            for j in range(i + 1, len(self.chapters)):
-                # next_concept = ' '.join(content[j])
-                next_ = ' '.join(self.concepts[j] if build_using == 'concepts' else self.outcomes[j])
+                    relation = self.llm.generate(f"Identify if these {build_using}: {next_} are prerequisites for these {build_using}: {current}. If there is NO prerequisite, respond with 'No' and 'No' only.")
+                    if relation.lower() != 'no':
+                        relations_dict[self.chapters[j]].append(self.chapters[i])
+        else:
+            relations_dict = create_concept_graph_structure(self.main_topics)
+            for i in range(len(self.main_topics)):
+                current = ' '.join(self.topic_key_points[i] if build_using == 'concepts' else self.topic_objectives[i])
+                for j in range(i + 1, len(self.main_topics)):
+                    next_ = ' '.join(self.topic_key_points[j] if build_using == 'concepts' else self.topic_objectives[j])
 
-                relation = self.llm.generate(f"Identify if these {build_using}: {next_} are prerequisites for these {build_using}: {current}. If there is NO prerequisite, respond with 'No' and 'No' only.")
-                if relation.split(',')[0].strip() != 'No':
-                    relations_dict[self.chapters[j]].append(self.chapters[i])
+                    relation = self.llm.generate(f"Identify if these {build_using}: {next_} are prerequisites for these {build_using}: {current}. If there is NO prerequisite, respond with 'No' and 'No' only.")
+                    if relation.lower() != 'no':
+                        relations_dict[self.main_topics[j]].append(self.main_topics[i])
 
         self.dependencies = relations_dict
         return relations_dict
 
 
-    def draw_graph(self, data: dict[str, list[str]]) -> None:
+    @staticmethod
+    def draw_graph(data: dict[str, list[str]]) -> None:
         '''
         Print a directed graph using the dependency dictionary
 
@@ -638,8 +771,8 @@ class relationExtractor:
 
         # return dependency_graph
     
-
-    def draw_hypergraph(self, data: dict[str, list[str]]) -> None:
+    @staticmethod
+    def draw_hypergraph(data: dict[str, list[str]]) -> None:
         '''
         Generate and display a hypergraph
 
@@ -685,28 +818,28 @@ class relationExtractor:
     #         sorted_dependencies[value] = dictionary[value]
 
 
-    def draw_hierarchy(self) -> None:
-        '''
-        Draws the hierarchy given a list of terms
+    # def draw_hierarchy(self) -> None:
+    #     '''
+    #     Draws the hierarchy given a list of terms
 
-        Args:
-            terms (list[str]): terms to draw a hierarchy of
+    #     Args:
+    #         terms (list[str]): terms to draw a hierarchy of
 
-        Returns:
-            None
-        '''
-        if self.terminology is None:
-            raise AttributeError('self.terminiology not found, run build_terminology first')
+    #     Returns:
+    #         None
+    #     '''
+    #     if self.terminology is None:
+    #         raise AttributeError('self.terminiology not found, run build_terminology first')
 
-        # network = Network(notebook = True, cdn_resources = 'remote')
-        tree = graphviz.Digraph()
+    #     # network = Network(notebook = True, cdn_resources = 'remote')
+    #     tree = graphviz.Digraph()
 
-        for first, second in self.terminology:
-            tree.node(name = first)
-            tree.node(name = second)
-            tree.edge(second, first)
+    #     for first, second in self.terminology:
+    #         tree.node(name = first)
+    #         tree.node(name = second)
+    #         tree.edge(second, first)
         
-        display(Image(tree.pipe(format = "png", renderer = "cairo", engine = 'dot')))
+    #     display(Image(tree.pipe(format = "png", renderer = "cairo", engine = 'dot')))
 
         # nodes = set()
         # edges = set()
@@ -730,8 +863,8 @@ class relationExtractor:
         #         edges.add((node_ids[first], node_ids[second]))
         #         network.add_edge(node_ids[first], node_ids[second])
 
-        if not os.path.exists('./visualizations/'):
-            os.mkdir('./visualizations/')
+        # if not os.path.exists('./visualizations/'):
+        #     os.mkdir('./visualizations/')
 
         # network.repulsion()
         # display(network.show('./visualizations/tree_hierarchy.html'))
@@ -816,68 +949,59 @@ class relationExtractor:
         return results
 
 
-    def build_terminology(self, build_using: str = 'concepts') -> list[tuple[str, str]]:
-        '''
-        Build terminology using key terms and is-a relationships 
+    # def build_terminology(self, build_using: str = 'concepts') -> list[tuple[str, str]]:
+    #     '''
+    #     Build terminology using key terms and is-a relationships 
 
-        Args:
-            build_using (str, default concepts):
+    #     Args:
+    #         build_using (str, default concepts):
 
-        Returns:
-            list[tuple[str, str]]: is-a relationships 
-        '''
-        if not self.key_terms and not self.concepts:
-            # should i do it for them here
-            raise AttributeError('identify_key_terms or identify_concepts must be ran first')
+    #     Returns:
+    #         list[tuple[str, str]]: is-a relationships 
+    #     '''
+    #     if not self.key_terms and not self.concepts:
+    #         # should i do it for them here
+    #         raise AttributeError('identify_key_terms or identify_concepts must be ran first')
 
-        terminology = set()
-        data = [clean(word) for l in (self.concepts if build_using == 'concepts' else self.key_terms) for word in l]
+    #     terminology = set()
+    #     data = [clean(word) for l in (self.concepts if build_using == 'concepts' else self.key_terms) for word in l]
 
-        with ThreadPoolExecutor(max_workers = min(4, len(data))) as p:
-            futures = []
-            for i in range(len(data)):
-                for j in range(len(data)):
-                    if i != j:
-                        future = p.submit(process_pair, data[i], data[j], self.llm)
-                        futures.append(future)
+    #     with ThreadPoolExecutor(max_workers = min(4, len(data))) as p:
+    #         futures = []
+    #         for i in range(len(data)):
+    #             for j in range(len(data)):
+    #                 if i != j:
+    #                     future = p.submit(process_pair, data[i], data[j], self.llm)
+    #                     futures.append(future)
 
-            for f in futures:
-                if f.result() is not None:
-                    terminology.add(f.result())
+    #         for f in futures:
+    #             if f.result() is not None:
+    #                 terminology.add(f.result())
 
-        self.terminology = list(terminology)
-        return list(terminology)
+    #     self.terminology = list(terminology)
+    #     return list(terminology)
 
 
-    def build_knowledge_graph(self) -> Network:
+    @staticmethod
+    def build_knowledge_graph(dependencies: dict[str, list[str]], concepts: list[list[str]], outcomes: list[list[str]]) -> Network:
         '''
         Builds a knowledge using learning concepts, outcomes, and key terms
 
         Args:
-            None
+            dependencies (dict[str, list[str]]): topic or chapter dependencies 
+            concepts (list[list[str]]): some form of concepts/terms associated with each chapter or topic
+            outcomes (list[list[str]]): some form of outcomes/objectives associated with chapter or topic 
         
         Returns:
             Network: pyvis network
         '''
-        if self.outcomes is None:
-            raise AttributeError('self.outcomes not found, run identify_outcomes first')
-
-        if self.concepts is None:
-            raise AttributeError('self.concepts not found, run identify_concepts first')
-
-        if self.key_terms is None:
-            raise AttributeError('self.key_terms not found, run identify_key_terms first')
-
-        if self.dependencies is None:
-            raise AttributeError('self.dependencies not found, run identify_dependencies first')
-
         kg = Network(notebook = True, cdn_resources='remote')
         
-        keys = list(self.dependencies.keys())
+        keys = list(dependencies.keys())
         used_nodes = {}
 
         j = 0 # used for node ids
-        for k, v in self.dependencies.items():
+        for k, v in dependencies.items():
             if k not in used_nodes:
                 kg.add_node(j, k, color = 'red', size = 4) # node id, node label
                 used_nodes[k] = j
@@ -891,83 +1015,74 @@ class relationExtractor:
                 
                 kg.add_edge(used_nodes[k], used_nodes[neighbor], label = 'requires')
 
-        for i in range(len(self.concepts)):
-            concept_str = ' '.join(self.concepts[i])
+        for i in range(len(concepts)):
+            concept_str = ' '.join(concepts[i])
             kg.add_node(j, f'{keys[i]} concepts', title = concept_str, color = 'green', size = 2)
             kg.add_edge(j, used_nodes[keys[i]], label = 'covers')
             j += 1
     
-            terms = ' '.join(self.key_terms[i])
-            kg.add_node(j, f'{keys[i]} terms', title = terms, color = 'blue', size = 2)
-            kg.add_edge(j, used_nodes[keys[i]], label = 'contains key terms')
-            j += 1
+            # terms = ' '.join(self.key_terms[i])
+            # kg.add_node(j, f'{keys[i]} terms', title = terms, color = 'blue', size = 2)
+            # kg.add_edge(j, used_nodes[keys[i]], label = 'contains key terms')
+            # j += 1
 
-            outcome = ' '.join(self.outcomes[i])
+            outcome = ' '.join(outcomes[i])
             kg.add_node(j, f'{keys[i]} outcomes', title = outcome, color = 'purple', size = 2)
             kg.add_edge(j , used_nodes[keys[i]], label = 'results with knowledge in')
             j += 1
     
-        self.kg = kg
         return kg
 
-    
-    def draw_knowledge_graph(self) -> None:
+
+    @staticmethod
+    def draw_knowledge_graph(kg: Network, save_to: str) -> None:
         '''
         Turns knowledge graph into an html file that can be visualized, file path: ./visualizations/kg.html
 
         Args:
-            None
+            kg (Network): pyvis network to visualize to
+            save_to (str): path to save html file to
 
         Returns:
             None
         '''
-        if self.kg is None:
-            raise AttributeError(f'self.kg not found. Run build_knowledge_graph() first')
-
-        if not os.path.exists('./visualizations/'):
-            os.mkdir('./visualizations/')
-
-        self.kg.repulsion(spring_length = 250)
-
-        if not os.path.exists('./visualizations/'):
-            os.mkdir('./visualizations/')
-
-        display(self.kg.show('./visualizations/kg.html'))
+        kg.repulsion(spring_length = 250)
+        display(kg.show(save_to))
 
 
-    def visualize_results(self, results_dict: list[dict]) -> None:
-        '''
-        Visualize results after evaluation using heatmap
+    # def visualize_results(self, results_dict: list[dict]) -> None:
+    #     '''
+    #     Visualize results after evaluation using heatmap
 
-        Args:
-            results_dict (list[dict]): list of dictionaries with test case results
+    #     Args:
+    #         results_dict (list[dict]): list of dictionaries with test case results
 
-        Returns:
-            None
-        '''
-        p_scores = [d['score'] for d in results_dict if d['name'] == 'Contextual Precision']
-        recall_scores = [d['score'] for d in results_dict if d['name'] == 'Contextual Recall']
-        ar_scores = [d['score'] for d in results_dict if d['name'] == 'Answer Relevancy']
-        ac_scores = [d['score'] for d in results_dict if d['name'] == 'Answer Correctness']
-        s_scores = [d['score'] for d in results_dict if d['name'] == 'SemanticSimilarity']
-        f_scores = [d['score'] for d in results_dict if d['name'] == 'Faithfulness']
+    #     Returns:
+    #         None
+    #     '''
+    #     p_scores = [d['score'] for d in results_dict if d['name'] == 'Contextual Precision']
+    #     recall_scores = [d['score'] for d in results_dict if d['name'] == 'Contextual Recall']
+    #     ar_scores = [d['score'] for d in results_dict if d['name'] == 'Answer Relevancy']
+    #     ac_scores = [d['score'] for d in results_dict if d['name'] == 'Answer Correctness']
+    #     s_scores = [d['score'] for d in results_dict if d['name'] == 'SemanticSimilarity']
+    #     f_scores = [d['score'] for d in results_dict if d['name'] == 'Faithfulness']
 
-        figs, ax = plt.subplots(1, 1)
-        ax[0].plot(p_scores, label = 'Contextual Precison')
-        ax[0].plot(recall_scores, label = 'Contextual Recall')
-        ax[0].plot(ar_scores, label = 'Answer Relevancy')
-        ax[0].plot(ac_scores, label = 'Answer Correctness')
-        ax[0].plot(s_scores, label = 'Semantic Similarity')
-        ax[0].plot(f_scores, label = 'Faithfulness')
-        ax[0].set_title('metric scores across chapters')
-        ax[0].set_xlabel('Chapter')
-        ax[0].set_ylabel('Score')
+    #     figs, ax = plt.subplots(1, 1)
+    #     ax[0].plot(p_scores, label = 'Contextual Precison')
+    #     ax[0].plot(recall_scores, label = 'Contextual Recall')
+    #     ax[0].plot(ar_scores, label = 'Answer Relevancy')
+    #     ax[0].plot(ac_scores, label = 'Answer Correctness')
+    #     ax[0].plot(s_scores, label = 'Semantic Similarity')
+    #     ax[0].plot(f_scores, label = 'Faithfulness')
+    #     ax[0].set_title('metric scores across chapters')
+    #     ax[0].set_xlabel('Chapter')
+    #     ax[0].set_ylabel('Score')
         
-        plt.legend()
-        plt.show()
+    #     plt.legend()
+    #     plt.show()
 
-        if not os.path.exists('./visualizations/'):
-            os.mkdir('./visualizations/')
+    #     if not os.path.exists('./visualizations/'):
+    #         os.mkdir('./visualizations/')
 
-        plt.savefig('./visualizations/results.png')
+    #     plt.savefig('./visualizations/results.png')
         

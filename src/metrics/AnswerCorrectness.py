@@ -11,11 +11,14 @@ class AnswerCorrectness(BaseMetric):
     def measure(self, test_case: LLMTestCase) -> float:
         metric = GEval(
             name = "AnswerCorrectness",
-            criteria = "Determine whether the actual output is factually correct given the expected output.",
+            evaluation_steps = [    
+                "Determine whether the actual output is factually correct based on the expected output.",
+                "Differences in grammar is OK.",
+            ],
             evaluation_params = [LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
             model = self.model,
             threshold = self.threshold,
-        )
+        )   
         
         metric.measure(test_case)
         self.success = metric.is_successful()
