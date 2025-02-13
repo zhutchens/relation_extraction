@@ -3,12 +3,13 @@ if len(sys.argv) > 5 or len(sys.argv) < 5:
     print('usage: <llm> <sentence transformer> <course to evaluate> <threshold>')
     print('available courses: CS2, CCDA (cloud computing for data analysis)')
 
+# sys.path.insert(0, '../src')
 llm = sys.argv[1]
 st_model = sys.argv[2]
 course = sys.argv[3]
 threshold = sys.argv[4]
 
-from src.generator import RAGKGGenerator
+from ..src.generator import RAGKGGenerator
 from os import getenv, environ
 from dotenv import load_dotenv
 from src.metrics import AnswerCorrectness, SemanticSimilarity

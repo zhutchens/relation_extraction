@@ -51,12 +51,13 @@ class RAGKGGenerator:
 
         self.textbooks = textbooks
 
-        if os.path.exists(syllabus):
-            self.syllabus = UnstructuredFileLoader(syllabus).load()
-        elif validators.url(syllabus):
-            self.syllabus = UnstructuredURLLoader([syllabus]).load()
-        else:
-            self.syllabus = syllabus
+        if syllabus is not None:
+            if os.path.exists(syllabus):
+                self.syllabus = UnstructuredFileLoader(syllabus).load()
+            elif validators.url(syllabus):
+                self.syllabus = UnstructuredURLLoader([syllabus]).load()
+            else:
+                self.syllabus = syllabus
 
         self.chapters = chapters
          
@@ -65,7 +66,7 @@ class RAGKGGenerator:
         # this seems like bad practice but whatever lol
         self.terminology, self.kg, self.main_topics, self.dependencies, self.main_topic_relationships, self.summarization, self.build_terminology_embeddings = None, None, None, None, None, None, None
 
-        self.concepts, self.outcomes, self.key_terms = [], [], []
+        self.concepts, self.outcomes, self.key_terms, self.pcas = [], [], [], []
         self.retrieved_concept_context, self.retrieved_outcome_context, self.retrieved_term_context = {}, {}, {}
 
         self.llm = llm 
@@ -73,7 +74,7 @@ class RAGKGGenerator:
         self.retriever = RetrievalSystem(self.textbooks, chunk_size, chunk_overlap, st_model)
 
     
-    def syllabus_pipline(self) -> tuple:
+    def syllabus_pipeline(self) -> tuple:
         '''
         This pipeline extracts main learning topics and objectives from syllabus, clusters them with relevant terms, and builds a knowledge graph 
 
@@ -111,7 +112,6 @@ class RAGKGGenerator:
         topic_relationships = {}
         topic_key_points = []
         clusters = []
-        self.pcas = []
 
         for topic in self.main_topics: 
             # task c. i
@@ -218,45 +218,47 @@ class RAGKGGenerator:
         return self.llm.generate(f'Given this question: {question}, and this student response: {answer}, provide misconceptions the student may have about the question and topic.')
 
     
-    def visualize_hierarchy(self, terminology: dict[str, list[str]], visual_type: str = 'sunburst'):
+    def visualize_hierarchy(self, terminologies: list[dict[str, list[str]]], visual_type: str = 'cluster map'):
         '''
         Visualizes hierarchy from build_terminology using sunburst chart or cluster map
 
         Args:
-            terminology (dict[str, list[str]]): clusters and their terms 
+            terminologies (list[dict[str, list[str]]]): list of terminologies (clusters)
             cluster_predictions (list[int]): list of cluster predictions 
-            visualize_type (str, default sunburst): type of visualization to use (sunburst/cluster map)
+            visualize_type (str, default cluster map): type of visualization to use (sunburst/cluster map)
 
         Returns:
             None
         '''
         if visual_type.lower() == 'sunburst':
-            # df = DataFrame(terminology)
+            # # df = DataFrame(terminology)
 
-            # columns = ['type']
-            # for i in range(len(terminology[list(terminology.keys())[0]])):
-            #     columns.append(f'term {i}')
-            # df.columns = columns
-            data = {
-                'terms': [word for l in terminology.values() for word in l],
-                'parent': [],
-            }
-            fig = px.sunburst()
-            fig.show()
+            # # columns = ['type']
+            # # for i in range(len(terminology[list(terminology.keys())[0]])):
+            # #     columns.append(f'term {i}')
+            # # df.columns = columns
+            # data = {
+            #     'terms': [word for l in terminology.values() for word in l],
+            #     'parent': [],
+            # }
+            # fig = px.sunburst()
+            # fig.show()
+            print('Sunburst chart not ready for use! For now use cluster map.')
 
         else:   
             # show dendrogram and clusters for agglomerative clustering
-            for pca, word in zip(self.pcas, self.main_topics):
-                fig, ax = plt.subplots(1, 2, figsize = (12, 6))
-                ax[0].scatter(pca[:, 0], pca[:, 1], c = self.ac.fit_predict(pca), cmap = 'viridis')
-                ax[0].set_title(f'Clusters for main topic: {word}')
+            for term in terminologies:
+                for pca, word in zip(self.pcas, term.keys()):
+                    fig, ax = plt.subplots(1, 2, figsize = (12, 6))
+                    ax[0].scatter(pca[:, 0], pca[:, 1], c = self.ac.fit_predict(pca), cmap = 'viridis')
+                    ax[0].set_title(f'Clusters')
 
-                matrix = linkage(pca, method = 'ward')
-                dendrogram(matrix, ax = ax[1])
-                ax[1].set_title(f'Dendrogram for main topic: {word}')
+                    matrix = linkage(pca, method = 'ward')
+                    dendrogram(matrix, ax = ax[1])
+                    ax[1].set_title(f'Dendrogram')
 
-                plt.tight_layout()
-                plt.show()
+                    plt.tight_layout()
+                    plt.show()
 
 
             
@@ -268,7 +270,7 @@ class RAGKGGenerator:
             build_using (list[str]): strings to build clusters with 
 
         Returns:
-            tuple[dict[str, list[str]], list[int]]: clusters, cluster number predictions 
+            dict[str, list[str]]: clusters 
         '''
         scores = []
         pca = PCA()
@@ -301,7 +303,7 @@ class RAGKGGenerator:
         return topic_clusters
         
 
-    def textbook_pipline(self) -> tuple[list[list[str]], list[list[str]], dict[str, list[str]]]:
+    def textbook_pipeline(self) -> tuple[list[list[str]], list[list[str]], dict[str, list[str]]]:
         '''
         In this pipeline, learning concepts and outcomes are extracted from each chapter and evaluated. Chapter dependencies are also created using the learning concepts
 

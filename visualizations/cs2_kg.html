@@ -1,0 +1,357 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        
+            <script>function neighbourhoodHighlight(params) {
+  // console.log("in nieghbourhoodhighlight");
+  allNodes = nodes.get({ returnType: "Object" });
+  // originalNodes = JSON.parse(JSON.stringify(allNodes));
+  // if something is selected:
+  if (params.nodes.length > 0) {
+    highlightActive = true;
+    var i, j;
+    var selectedNode = params.nodes[0];
+    var degrees = 2;
+
+    // mark all nodes as hard to read.
+    for (let nodeId in allNodes) {
+      // nodeColors[nodeId] = allNodes[nodeId].color;
+      allNodes[nodeId].color = "rgba(200,200,200,0.5)";
+      if (allNodes[nodeId].hiddenLabel === undefined) {
+        allNodes[nodeId].hiddenLabel = allNodes[nodeId].label;
+        allNodes[nodeId].label = undefined;
+      }
+    }
+    var connectedNodes = network.getConnectedNodes(selectedNode);
+    var allConnectedNodes = [];
+
+    // get the second degree nodes
+    for (i = 1; i < degrees; i++) {
+      for (j = 0; j < connectedNodes.length; j++) {
+        allConnectedNodes = allConnectedNodes.concat(
+          network.getConnectedNodes(connectedNodes[j])
+        );
+      }
+    }
+
+    // all second degree nodes get a different color and their label back
+    for (i = 0; i < allConnectedNodes.length; i++) {
+      // allNodes[allConnectedNodes[i]].color = "pink";
+      allNodes[allConnectedNodes[i]].color = "rgba(150,150,150,0.75)";
+      if (allNodes[allConnectedNodes[i]].hiddenLabel !== undefined) {
+        allNodes[allConnectedNodes[i]].label =
+          allNodes[allConnectedNodes[i]].hiddenLabel;
+        allNodes[allConnectedNodes[i]].hiddenLabel = undefined;
+      }
+    }
+
+    // all first degree nodes get their own color and their label back
+    for (i = 0; i < connectedNodes.length; i++) {
+      // allNodes[connectedNodes[i]].color = undefined;
+      allNodes[connectedNodes[i]].color = nodeColors[connectedNodes[i]];
+      if (allNodes[connectedNodes[i]].hiddenLabel !== undefined) {
+        allNodes[connectedNodes[i]].label =
+          allNodes[connectedNodes[i]].hiddenLabel;
+        allNodes[connectedNodes[i]].hiddenLabel = undefined;
+      }
+    }
+
+    // the main node gets its own color and its label back.
+    // allNodes[selectedNode].color = undefined;
+    allNodes[selectedNode].color = nodeColors[selectedNode];
+    if (allNodes[selectedNode].hiddenLabel !== undefined) {
+      allNodes[selectedNode].label = allNodes[selectedNode].hiddenLabel;
+      allNodes[selectedNode].hiddenLabel = undefined;
+    }
+  } else if (highlightActive === true) {
+    // console.log("highlightActive was true");
+    // reset all nodes
+    for (let nodeId in allNodes) {
+      // allNodes[nodeId].color = "purple";
+      allNodes[nodeId].color = nodeColors[nodeId];
+      // delete allNodes[nodeId].color;
+      if (allNodes[nodeId].hiddenLabel !== undefined) {
+        allNodes[nodeId].label = allNodes[nodeId].hiddenLabel;
+        allNodes[nodeId].hiddenLabel = undefined;
+      }
+    }
+    highlightActive = false;
+  }
+
+  // transform the object into an array
+  var updateArray = [];
+  if (params.nodes.length > 0) {
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        // console.log(allNodes[nodeId]);
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  } else {
+    // console.log("Nothing was selected");
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        // console.log(allNodes[nodeId]);
+        // allNodes[nodeId].color = {};
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  }
+}
+
+function filterHighlight(params) {
+  allNodes = nodes.get({ returnType: "Object" });
+  // if something is selected:
+  if (params.nodes.length > 0) {
+    filterActive = true;
+    let selectedNodes = params.nodes;
+
+    // hiding all nodes and saving the label
+    for (let nodeId in allNodes) {
+      allNodes[nodeId].hidden = true;
+      if (allNodes[nodeId].savedLabel === undefined) {
+        allNodes[nodeId].savedLabel = allNodes[nodeId].label;
+        allNodes[nodeId].label = undefined;
+      }
+    }
+
+    for (let i=0; i < selectedNodes.length; i++) {
+      allNodes[selectedNodes[i]].hidden = false;
+      if (allNodes[selectedNodes[i]].savedLabel !== undefined) {
+        allNodes[selectedNodes[i]].label = allNodes[selectedNodes[i]].savedLabel;
+        allNodes[selectedNodes[i]].savedLabel = undefined;
+      }
+    }
+
+  } else if (filterActive === true) {
+    // reset all nodes
+    for (let nodeId in allNodes) {
+      allNodes[nodeId].hidden = false;
+      if (allNodes[nodeId].savedLabel !== undefined) {
+        allNodes[nodeId].label = allNodes[nodeId].savedLabel;
+        allNodes[nodeId].savedLabel = undefined;
+      }
+    }
+    filterActive = false;
+  }
+
+  // transform the object into an array
+  var updateArray = [];
+  if (params.nodes.length > 0) {
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  } else {
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  }
+}
+
+function selectNode(nodes) {
+  network.selectNodes(nodes);
+  neighbourhoodHighlight({ nodes: nodes });
+  return nodes;
+}
+
+function selectNodes(nodes) {
+  network.selectNodes(nodes);
+  filterHighlight({nodes: nodes});
+  return nodes;
+}
+
+function highlightFilter(filter) {
+  let selectedNodes = []
+  let selectedProp = filter['property']
+  if (filter['item'] === 'node') {
+    let allNodes = nodes.get({ returnType: "Object" });
+    for (let nodeId in allNodes) {
+      if (allNodes[nodeId][selectedProp] && filter['value'].includes((allNodes[nodeId][selectedProp]).toString())) {
+        selectedNodes.push(nodeId)
+      }
+    }
+  }
+  else if (filter['item'] === 'edge'){
+    let allEdges = edges.get({returnType: 'object'});
+    // check if the selected property exists for selected edge and select the nodes connected to the edge
+    for (let edge in allEdges) {
+      if (allEdges[edge][selectedProp] && filter['value'].includes((allEdges[edge][selectedProp]).toString())) {
+        selectedNodes.push(allEdges[edge]['from'])
+        selectedNodes.push(allEdges[edge]['to'])
+      }
+    }
+  }
+  selectNodes(selectedNodes)
+}</script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" integrity="sha512-WgxfT5LWjfszlPHXRmBWHkV2eceiWTOBvrKCNbdgDYTHrT2AeLCGbF4sZlZw3UMN3WtL0tGUoIAKsu8mllg/XA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js" integrity="sha512-LnvoEWDFrqGHlHmDD2101OrLcbsfkrzoSpvtSQtxK3RMnRV0eOkhhBN2dXHKRrUU8p2DGRTk35n4O8nWSVe1mQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+            
+            
+            
+            
+            
+            
+
+        
+<center>
+<h1></h1>
+</center>
+
+<!-- <link rel="stylesheet" href="../node_modules/vis/dist/vis.min.css" type="text/css" />
+<script type="text/javascript" src="../node_modules/vis/dist/vis.js"> </script>-->
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6"
+          crossorigin="anonymous"
+        />
+        <script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-JEW9xMcG8R+pH31jmWH6WWP0WintQrMb4s7ZOdauHnUtxwoG2vI5DkLtS3qm9Ekf"
+          crossorigin="anonymous"
+        ></script>
+
+
+        <center>
+          <h1></h1>
+        </center>
+        <style type="text/css">
+
+             #mynetwork {
+                 width: 100%;
+                 height: 600px;
+                 background-color: #ffffff;
+                 border: 1px solid lightgray;
+                 position: relative;
+                 float: left;
+             }
+
+             
+
+             
+
+             
+        </style>
+    </head>
+
+
+    <body>
+        <div class="card" style="width: 100%">
+            
+            
+            <div id="mynetwork" class="card-body"></div>
+        </div>
+
+        
+        
+
+        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+
+              
+
+              
+
+              // This method is responsible for drawing the graph, returns the drawn network
+              function drawGraph() {
+                  var container = document.getElementById('mynetwork');
+
+                  
+
+                  // parsing and collecting nodes and edges from the python
+                  nodes = new vis.DataSet([{"color": "red", "id": 0, "label": "Data Structures and Algorithms", "shape": "dot", "size": 4}, {"color": "red", "id": 1, "label": "Mathematical Preliminaries", "shape": "dot", "size": 4}, {"color": "red", "id": 2, "label": "Algorithm Analysis", "shape": "dot", "size": 4}, {"color": "red", "id": 3, "label": "Lists, Stacks, and Queues", "shape": "dot", "size": 4}, {"color": "red", "id": 4, "label": "Binary Trees", "shape": "dot", "size": 4}, {"color": "red", "id": 5, "label": "Non-Binary Trees", "shape": "dot", "size": 4}, {"color": "red", "id": 6, "label": "Internal Sorting", "shape": "dot", "size": 4}, {"color": "red", "id": 7, "label": "File Processing and External Sorting", "shape": "dot", "size": 4}, {"color": "red", "id": 8, "label": "Searching", "shape": "dot", "size": 4}, {"color": "red", "id": 9, "label": "Indexing", "shape": "dot", "size": 4}, {"color": "red", "id": 10, "label": "Graphs", "shape": "dot", "size": 4}, {"color": "red", "id": 11, "label": "Lists and Arrays Revisited", "shape": "dot", "size": 4}, {"color": "red", "id": 12, "label": "Advanced Tree Structures", "shape": "dot", "size": 4}, {"color": "red", "id": 13, "label": "Analysis Techniques", "shape": "dot", "size": 4}, {"color": "red", "id": 14, "label": "Lower Bounds", "shape": "dot", "size": 4}, {"color": "red", "id": 15, "label": "Patterns of Algorithms", "shape": "dot", "size": 4}, {"color": "red", "id": 16, "label": "Limits to Computation", "shape": "dot", "size": 4}, {"color": "green", "id": 17, "label": "Data Structures and Algorithms concepts", "shape": "dot", "size": 2, "title": "1. Abstract Data Types (ADT), 2. Array-Based List, 3. Linked List, 4. Stacks, 5. Queues, 6. Dictionary ADT, 7. Binary Search Trees, 8. Heaps and Priority Queues, 9. Huffman Coding Trees, 10. Graph Traversals (Breadth-First Search and Depth-First Search)"}, {"color": "purple", "id": 18, "label": "Data Structures and Algorithms outcomes", "shape": "dot", "size": 2, "title": "1. Demonstrate an understanding of Abstract Data Types (ADTs) for lists, including array-based and linked list implementations, 2. Compare and contrast the efficiency and use cases of stacks and queues, including their array-based and linked implementations, 3. Explain the concept and implementation of the Dictionary ADT for data storage and retrieval, 4. Understand the structure and operations of Binary Search Trees and their role in efficient searching, 5. Analyze the running time of algorithms, including the differences between sequential and binary search, 6. Implement and evaluate the efficiency of complete binary trees, particularly in the context of heaps and priority queues, 7. Explore the use of Skip Lists as a probabilistic data structure to improve search and update operations, 8. Demonstrate the ability to perform binary tree traversals and understand their applications, 9. Implement and analyze graph traversal algorithms, including depth-first search and breadth-first search, 10. Understand the principles of Huffman coding trees and their application in data compression."}, {"color": "green", "id": 19, "label": "Mathematical Preliminaries concepts", "shape": "dot", "size": 2, "title": "Sets and Relations,   Set Notation,   Union of Sets,   Intersection of Sets,   Set Difference,   Functions and Domains,   Recursion,   Mathematical Proof Techniques,   Logarithms,   Summations and Recurrences"}, {"color": "purple", "id": 20, "label": "Mathematical Preliminaries outcomes", "shape": "dot", "size": 2, "title": "1. Demonstrate an understanding of set theory and its application in algorithm design, 2. Explain the concepts of union, intersection, and set difference in sets, 3. Understand the properties of sets, including the lack of order and duplicate elements, 4. Demonstrate the ability to perform polynomial evaluation and interpolation, 5. Understand permutations and calculate the number of permutations for a sequence, 6. Explain the concept of sparse matrices and their implications, 7. Apply mathematical proof techniques such as direct proof, proof by contradiction, and proof by mathematical induction, 8. Understand the factorial function and its growth, including the use of Stirling\u2019s approximation, 9. Demonstrate an understanding of logarithms, summations, and recurrences, 10. Explain the importance of recursion in mathematical and algorithmic contexts."}, {"color": "green", "id": 21, "label": "Algorithm Analysis concepts", "shape": "dot", "size": 2, "title": "Asymptotic Analysis,   Big-Oh Notation,   Theta (\u0398) Notation,   Omega (\u2126) Notation,   Upper Bounds,   Lower Bounds,   Average-Case Analysis,   Empirical Testing,   Growth Rate,   Resource Consumption Estimation"}, {"color": "purple", "id": 22, "label": "Algorithm Analysis outcomes", "shape": "dot", "size": 2, "title": "1. Demonstrate an understanding of asymptotic algorithm analysis, 2. Explain the significance of big-Oh, \u2126, and \u0398 notations, 3. Apply simplifying rules to derive asymptotic expressions, 4. Compare algorithms using asymptotic complexity, 5. Analyze the resource consumption of algorithms, 6. Distinguish between algorithms with the same asymptotic complexity through empirical testing, 7. Understand the limitations of asymptotic analysis for small input sizes, 8. Recognize the importance of growth rates over constant factors in algorithm analysis, 9. Identify the best, worst, and average-case scenarios for algorithm performance, 10. Use asymptotic analysis to estimate whether a proposed solution meets resource constraints."}, {"color": "green", "id": 23, "label": "Lists, Stacks, and Queues concepts", "shape": "dot", "size": 2, "title": "1. FIFO (First-In, First-Out), 2. LIFO (Last-In, First-Out), 3. Enqueue Operation, 4. Dequeue Operation, 5. Push Operation, 6. Pop Operation, 7. Array-Based Queue, 8. Linked Queue, 9. Singly Linked List, 10. Linked Stack Implementation"}, {"color": "purple", "id": 24, "label": "Lists, Stacks, and Queues outcomes", "shape": "dot", "size": 2, "title": "1. Demonstrate an understanding of the FIFO (First-In, First-Out) principle in queues, 2. Implement enqueue and dequeue operations for a queue, 3. Compare array-based and linked implementations of queues, 4. Explain the concept of circular queues and their implementation, 5. Implement stack operations such as push, pop, and clear, 6. Understand the LIFO (Last-In, First-Out) principle in stacks, 7. Compare array-based and linked implementations of stacks, 8. Explain the use of header nodes in linked queue implementations, 9. Analyze the time complexity of queue operations in different implementations, 10. Implement a function to reverse the order of elements using stack and queue ADT functions."}, {"color": "green", "id": 25, "label": "Binary Trees concepts", "shape": "dot", "size": 2, "title": "Preorder Traversal,   Inorder Traversal,   Postorder Traversal,   Full Binary Tree,   Complete Binary Tree,   Binary Search Tree,   Threaded Binary Tree,   Heap Data Structure,   Space Requirements in Binary Trees,   Binary Tree Node Implementations"}, {"color": "purple", "id": 26, "label": "Binary Trees outcomes", "shape": "dot", "size": 2, "title": "1. Understand the definitions and properties of full and complete binary trees, 2. Explain the Full Binary Tree Theorem, 3. Demonstrate the ability to perform and implement binary tree traversals: preorder, inorder, and postorder, 4. Understand the structure and properties of Binary Search Trees (BSTs), 5. Explain the Binary Search Tree Property and its implications for inorder traversal, 6. Implement binary tree node structures using array and pointer-based methods, 7. Understand the concept and implementation of threaded binary trees, 8. Explain the differences between full and complete binary trees with examples, 9. Understand the space requirements and optimizations for binary tree implementations, 10. Demonstrate the ability to write recursive functions for binary tree operations."}, {"color": "green", "id": 27, "label": "Non-Binary Trees concepts", "shape": "dot", "size": 2, "title": "General Tree Definitions and Terminology,   K-ary Trees,   Dynamic \"Left-Child/Right-Sibling\" Implementation,   Sequential Tree Implementations,   General Tree Representation with Linked Lists,   Full and Complete K-ary Trees,   Tree Traversals,   Tree Serialization,   Tree Implementation Challenges,   Applications of Non-Binary Trees"}, {"color": "purple", "id": 28, "label": "Non-Binary Trees outcomes", "shape": "dot", "size": 2, "title": "1. Understand the concept of K-ary trees and their structure, where each internal node has exactly K children, 2. Demonstrate the ability to implement K-ary trees, noting their fixed number of children compared to general trees, 3. Use mathematical induction to prove the number of leaves in a non-empty full K-ary tree is (K \u2212 1)n + 1, where n is the number of internal nodes, 4. Derive formulas for computing relatives of nodes in a complete K-ary tree using a complete tree representation, 5. Identify the differences between full and complete K-ary trees, as illustrated by examples, 6. Implement dynamic general tree representations using linked lists of child pointers, 7. Understand the \"Left-Child/Right-Sibling\" implementation for dynamic tree structures, 8. Calculate the overhead fraction for a full K-ary tree implementation with specific space requirements, 9. Write sequential representations for trees using different coding examples, 10. Draw general trees from given sequential representations, demonstrating an understanding of tree structure and representation."}, {"color": "green", "id": 29, "label": "Internal Sorting concepts", "shape": "dot", "size": 2, "title": "Bubble Sort, Insertion Sort, Selection Sort, Quicksort, Mergesort, Heapsort, Shellsort, Binary Insert Sort, Average-case Analysis, Worst-case Analysis"}, {"color": "purple", "id": 30, "label": "Internal Sorting outcomes", "shape": "dot", "size": 2, "title": "1. Understand the limitations and inefficiencies of Bubble Sort,   2. Recognize the \u0398(n\u00b2) time complexity of Bubble Sort, Insertion Sort, and Selection Sort in average and worst cases,   3. Identify the potential for optimization in Bubble Sort by using a flag to detect sorted arrays,   4. Comprehend the concept of binary insert sort and its impact on comparison count,   5. Analyze the average-case cost of sorting algorithms and the factors influencing it,   6. Explore the use of Insertion Sort in combination with other algorithms like Quicksort and Mergesort for optimization,   7. Evaluate the stability of various sorting algorithms, including Insertion Sort and Bubble Sort,   8. Compare the performance of different sorting algorithms through empirical analysis,   9. Understand the role of Shellsort in improving performance over \u0398(n\u00b2) algorithms,   10. Recognize the importance of average-case analysis in understanding algorithm performance."}, {"color": "green", "id": 31, "label": "File Processing and External Sorting concepts", "shape": "dot", "size": 2, "title": "Replacement Selection,   Multiway Merging,   Buffers and Buffer Pools,   Disk Fragmentation,   Block Size and Record Size,   External Sorting Algorithms,   Disk Access Costs,   Primary versus Secondary Storage,   Programmer\u2019s View of Files,   Defragmentation Techniques"}, {"color": "purple", "id": 32, "label": "File Processing and External Sorting outcomes", "shape": "dot", "size": 2, "title": "1. Understand the impact of access order on I/O time in file processing, 2. Differentiate between random access and sequential access in disk files, 3. Recognize the importance of disk file layout in reducing seek time during sequential processing, 4. Explain the concept of external sorting and its necessity for large datasets, 5. Implement external sorting using replacement selection and multiway merging, 6. Understand the process of creating initial runs and merging them using Mergesort, 7. Calculate the number of passes required in Mergesort for different block sizes, 8. Identify the challenges and solutions in sorting records that do not fit in main memory, 9. Explore the role of buffers and buffer pools in file processing, 10. Evaluate the efficiency of external sorting algorithms on different hardware configurations."}, {"color": "green", "id": 33, "label": "Searching concepts", "shape": "dot", "size": 2, "title": "Binary Search, Sequential Search, Interpolation Search, Sorted vs. Unsorted Arrays, Time Complexity (\u0398(n), \u0398(log n), \u0398(log log n)), Random Access Requirement, Search Distribution and Frequency Sorting, Two-Level Indexing, Quadratic Binary Search, Big-Oh Notation and Asymptotic Analysis"}, {"color": "purple", "id": 34, "label": "Searching outcomes", "shape": "dot", "size": 2, "title": "1. Demonstrate an understanding of the trade-offs between sequential and binary search, 2. Implement sequential search and binary search algorithms, 3. Analyze the time complexity of sequential and binary search algorithms, 4. Understand the conditions under which binary search is optimal, 5. Explain the impact of data distribution on search algorithm choice, 6. Implement a second-level index to optimize search in large databases, 7. Compare the efficiency of binary search to other search algorithms like interpolation search, 8. Understand the requirements for binary search, such as sorted arrays, 9. Explore variations of binary search for different search requirements, 10. Evaluate the impact of maintaining sorted order on search performance."}, {"color": "green", "id": 35, "label": "Indexing concepts", "shape": "dot", "size": 2, "title": "B-trees,   B+-trees,   Tree-based indexing,   Linear indexing,   Secondary key index,   Primary key index,   ISAM (Indexed Sequential Access Method),   Hashing,   Inverted list,   Key/pointer pairs"}, {"color": "purple", "id": 36, "label": "Indexing outcomes", "shape": "dot", "size": 2, "title": "1. Demonstrate an understanding of the role of indexing in organizing large databases, 2. Explain the concept of direct access through hashing, 3. Describe the limitations of using a sorted list for indexing, particularly for insert and delete operations, 4. Understand the use of tree indexes for supporting record insertion, deletion, and key range searches, 5. Explain the ISAM method and its limitations in handling large databases, 6. Describe the basic issues related to tree indexing, 7. Understand the structure and function of 2-3 trees and their relation to B-trees, 8. Explain the significance and variations of B-trees in large disk-based databases, 9. Describe the process of associating a key with the location of a corresponding data record, 10. Understand the differences between primary and secondary keys and their roles in indexing."}, {"color": "green", "id": 37, "label": "Graphs concepts", "shape": "dot", "size": 2, "title": "Directed Graph (Digraph), Undirected Graph, Labeled Graph, Weighted Graph, Connected Components, Acyclic Graph, Directed Acyclic Graph (DAG), Adjacency Matrix, Adjacency List, Graph Traversals"}, {"color": "purple", "id": 38, "label": "Graphs outcomes", "shape": "dot", "size": 2, "title": "1. Understand the difference between directed graphs (digraphs) and undirected graphs, 2. Identify and describe labeled graphs and weighted graphs, 3. Explain adjacency and incidence of vertices and edges in a graph, 4. Define and identify connected components in an undirected graph, 5. Understand the concept of acyclic graphs and directed acyclic graphs (DAGs), 6. Describe the properties of a free tree as a connected, undirected graph with no simple cycles, 7. Implement graph representations using adjacency matrices and adjacency lists, 8. Perform graph traversals using depth-first search (DFS) and breadth-first search (BFS), 9. Solve shortest-path problems and understand algorithms like Dijkstra\u0027s for single-source shortest paths, 10. Understand and apply algorithms for finding minimum-cost spanning trees, such as Prim\u2019s and Kruskal\u2019s algorithms."}, {"color": "green", "id": 39, "label": "Lists and Arrays Revisited concepts", "shape": "dot", "size": 2, "title": "Array-based list implementation, Random access efficiency in array-based lists, Space efficiency comparison between array-based and linked lists, Insertion and removal time complexity in array-based lists, Space overhead in linked lists due to pointers, Stack implementation using arrays, Binary search in sorted array-based lists, Insertion inefficiency in sorted array-based lists, Dynamic resizing limitations of array-based lists, Efficiency of linked lists for frequent insertions and deletions"}, {"color": "purple", "id": 40, "label": "Lists and Arrays Revisited outcomes", "shape": "dot", "size": 2, "title": "1. Understand the structure and implementation of the AList class, which stores list elements in contiguous array positions, 2. Explain the advantages and disadvantages of array-based lists, including their fixed size and space efficiency, 3. Compare array-based lists and linked lists in terms of space and time efficiency, 4. Describe the process of inserting and removing elements in array-based lists and the associated time complexity, 5. Understand the concept of random access in array-based lists and its constant time complexity, 6. Discuss the implications of using unsorted versus sorted lists for insertion and search operations, 7. Explain the logical versus physical implementation of data types, specifically lists and arrays, 8. Analyze the space-saving techniques for storing data in arrays and lists, 9. Understand the operations and methods associated with array-based lists, such as moveToStart, moveToEnd, prev, and next, 10. Discuss the challenges and strategies for balancing insertion and search efficiency in data structures."}, {"color": "green", "id": 41, "label": "Advanced Tree Structures concepts", "shape": "dot", "size": 2, "title": "AVL Tree Balance Property,   AVL Tree Rotations,   Splay Tree Rotations,   Self-Balancing Search Trees,   2-3 Trees,   Trie Structures,   Spatial Data Structures,   K-D Trees,   PR Quadtrees,   Binary Search Tree (BST) Modifications"}, {"color": "purple", "id": 42, "label": "Advanced Tree Structures outcomes", "shape": "dot", "size": 2, "title": "1. Understand the concept of self-balancing search trees and their importance in maintaining efficient search operations. 2. Explain the differences between AVL trees and splay trees, particularly in terms of balance and operation costs. 3. Describe the AVL tree\u0027s balance property, where the depths of the left and right subtrees for every node differ by at most one. 4. Demonstrate the ability to perform single and double rotations in AVL trees to maintain balance after insertions and deletions. 5. Understand the concept of splay trees and how they use rotations to improve access times over a series of operations. 6. Explain the zigzag and zigzig rotations in splay trees and their effects on tree structure. 7. Recognize the trade-offs between maintaining strict balance (as in AVL trees) and allowing more flexibility (as in splay trees) for improved average performance. 8. Identify the use cases for different tree structures, such as tries for string storage and retrieval, and spatial data structures for organizing point data. 9. Understand the concept of key space decomposition as illustrated by tries and spatial data structures like the PR quadtree. 10. Explain the role of spatial data structures, such as k-d trees and PR quadtrees, in handling multi-dimensional data."}, {"color": "green", "id": 43, "label": "Analysis Techniques concepts", "shape": "dot", "size": 2, "title": "Amortized Analysis,   Asymptotic Analysis,   Recurrence Relations,   Summation Techniques,   Divide and Conquer Recurrences,   Average-Case Analysis,   Lower Bounds Proofs,   Graph Traversals,   Minimum-Cost Spanning Trees,   Algorithm Analysis"}, {"color": "purple", "id": 44, "label": "Analysis Techniques outcomes", "shape": "dot", "size": 2, "title": "1. Demonstrate an understanding of summation techniques in algorithm analysis, 2. Demonstrate the ability to solve recurrence relations, including estimating upper and lower bounds, 3. Apply techniques for expanding recurrences in algorithm analysis, 4. Analyze divide and conquer recurrences effectively, 5. Conduct average-case analysis of algorithms such as Quicksort, 6. Understand and apply amortized analysis for a series of operations, 7. Explain the concept of lower bounds and their significance in algorithm analysis, 8. Demonstrate the ability to prove lower bounds for searching in unsorted and sorted lists, 9. Apply asymptotic analysis to evaluate algorithm efficiency, 10. Understand the importance of tuning algorithms before tuning code for performance improvements."}, {"color": "green", "id": 45, "label": "Lower Bounds concepts", "shape": "dot", "size": 2, "title": "Lower bound proofs, Asymptotic optimality, \u0398-notation, Reduction, Information theoretic lower bound, \u2126(n log n) for sorting, Tightest lower bound, Input size as a lower bound, Sequential search lower bound, Upper bound vs. lower bound distinction"}, {"color": "purple", "id": 46, "label": "Lower Bounds outcomes", "shape": "dot", "size": 2, "title": "1. Understand the distinction between upper and lower bounds, especially in cases of incomplete knowledge about a cost function, 2. Recognize that \u0398-notation indicates no meaningful difference between the growth rates of upper and lower bounds for simple algorithms, 3. Comprehend the proof that no sorting algorithm based on key comparisons can be faster than \u2126(n log n) in the worst case, 4. Appreciate the significance of knowing that widely used sorting algorithms are asymptotically optimal, 5. Recognize the importance of non-trivial lower-bounds proofs, such as the one for sorting, as models for proving lower bounds on other problems, 6. Understand the concept of reduction, which involves deriving asymptotic bounds for one problem from the bounds of another, 7. Identify the lower bound for a problem as the tightest lower bound that can be proven for all possible algorithms solving that problem, 8. Recognize that finding the tightest lower bound is often difficult, especially if it is more than the trivial lower bound determined by input size, 9. Understand that knowing the lower bound for a problem helps determine when to stop searching for a better algorithm, 10. Learn that a good algorithm is one whose upper bound matches the problem\u2019s lower bound, indicating no asymptotically faster algorithm exists."}, {"color": "green", "id": 47, "label": "Patterns of Algorithms concepts", "shape": "dot", "size": 2, "title": "Breadth-First Search (BFS), Depth-First Search (DFS), Divide and Conquer, Binary Search, Recursion, Sorting Algorithms, Dynamic Programming, Randomized Algorithms, Graph Traversals, Design Patterns"}, {"color": "purple", "id": 48, "label": "Patterns of Algorithms outcomes", "shape": "dot", "size": 2, "title": "1. Demonstrate an understanding of breadth-first search (BFS) and its implementation using a queue, 2. Explain the concept of binary search and its application in sorted arrays, 3. Illustrate the use of divide-and-conquer strategies in sorting algorithms like Mergesort and Quicksort, 4. Analyze the performance differences between average and worst-case scenarios in algorithms such as Quicksort, 5. Apply dynamic programming techniques to solve problems like the Knapsack Problem and All-Pairs Shortest Paths, 6. Understand the role of randomized algorithms in finding large values and implementing skip lists, 7. Explore numerical algorithms for tasks such as exponentiation, finding the largest common factor, and matrix multiplication, 8. Recognize the importance of recursion in algorithm design and its trade-offs in terms of efficiency, 9. Identify the use of design patterns like the composite and visitor patterns in algorithm design, 10. Solve recurrence relations using estimation, expansion, and leveraging proven theorems, particularly in divide-and-conquer algorithms."}, {"color": "green", "id": 49, "label": "Limits to Computation concepts", "shape": "dot", "size": 2, "title": "Reductions,   Hard Problems,   The Theory of NP-Completeness,   NP-Completeness Proofs,   Coping with NP-Complete Problems,   Impossible Problems,   Uncountability,   The Halting Problem Is Unsolvable,   Turing Machines,   P vs NP Problem"}, {"color": "purple", "id": 50, "label": "Limits to Computation outcomes", "shape": "dot", "size": 2, "title": "1. Understand the concept of reductions and their role in classifying computational problems, 2. Explain the theory of NP-completeness and its significance in computer science, 3. Demonstrate the ability to prove NP-completeness through reduction arguments, 4. Identify strategies for coping with NP-complete problems in practical scenarios, 5. Recognize the existence of impossible problems, such as those that are uncomputable, 6. Understand the concept of uncountability and its implications for computation, 7. Explain why the Halting Problem is unsolvable and the proof by contradiction, 8. Apply reduction arguments to prove the unsolvability of various computational problems, 9. Understand the significance of the SAT problem as the first NP-complete problem, 10. Explore further reading and resources to deepen understanding of NP-completeness and computational limits."}]);
+                  edges = new vis.DataSet([{"from": 4, "label": "requires", "to": 0}, {"from": 11, "label": "requires", "to": 0}, {"from": 11, "label": "requires", "to": 3}, {"from": 14, "label": "requires", "to": 12}, {"from": 15, "label": "requires", "to": 13}, {"from": 17, "label": "covers", "to": 0}, {"from": 18, "label": "results with knowledge in", "to": 0}, {"from": 19, "label": "covers", "to": 1}, {"from": 20, "label": "results with knowledge in", "to": 1}, {"from": 21, "label": "covers", "to": 2}, {"from": 22, "label": "results with knowledge in", "to": 2}, {"from": 23, "label": "covers", "to": 3}, {"from": 24, "label": "results with knowledge in", "to": 3}, {"from": 25, "label": "covers", "to": 4}, {"from": 26, "label": "results with knowledge in", "to": 4}, {"from": 27, "label": "covers", "to": 5}, {"from": 28, "label": "results with knowledge in", "to": 5}, {"from": 29, "label": "covers", "to": 6}, {"from": 30, "label": "results with knowledge in", "to": 6}, {"from": 31, "label": "covers", "to": 7}, {"from": 32, "label": "results with knowledge in", "to": 7}, {"from": 33, "label": "covers", "to": 8}, {"from": 34, "label": "results with knowledge in", "to": 8}, {"from": 35, "label": "covers", "to": 9}, {"from": 36, "label": "results with knowledge in", "to": 9}, {"from": 37, "label": "covers", "to": 10}, {"from": 38, "label": "results with knowledge in", "to": 10}, {"from": 39, "label": "covers", "to": 11}, {"from": 40, "label": "results with knowledge in", "to": 11}, {"from": 41, "label": "covers", "to": 12}, {"from": 42, "label": "results with knowledge in", "to": 12}, {"from": 43, "label": "covers", "to": 13}, {"from": 44, "label": "results with knowledge in", "to": 13}, {"from": 45, "label": "covers", "to": 14}, {"from": 46, "label": "results with knowledge in", "to": 14}, {"from": 47, "label": "covers", "to": 15}, {"from": 48, "label": "results with knowledge in", "to": 15}, {"from": 49, "label": "covers", "to": 16}, {"from": 50, "label": "results with knowledge in", "to": 16}]);
+
+                  nodeColors = {};
+                  allNodes = nodes.get({ returnType: "Object" });
+                  for (nodeId in allNodes) {
+                    nodeColors[nodeId] = allNodes[nodeId].color;
+                  }
+                  allEdges = edges.get({ returnType: "Object" });
+                  // adding nodes and edges to the graph
+                  data = {nodes: nodes, edges: edges};
+
+                  var options = {
+    "configure": {
+        "enabled": false
+    },
+    "edges": {
+        "color": {
+            "inherit": true
+        },
+        "smooth": {
+            "enabled": true,
+            "type": "dynamic"
+        }
+    },
+    "interaction": {
+        "dragNodes": true,
+        "hideEdgesOnDrag": false,
+        "hideNodesOnDrag": false
+    },
+    "physics": {
+        "enabled": true,
+        "repulsion": {
+            "centralGravity": 0.2,
+            "damping": 0.09,
+            "nodeDistance": 100,
+            "springConstant": 0.05,
+            "springLength": 250
+        },
+        "solver": "repulsion",
+        "stabilization": {
+            "enabled": true,
+            "fit": true,
+            "iterations": 1000,
+            "onlyDynamicEdges": false,
+            "updateInterval": 50
+        }
+    }
+};
+
+                  
+
+
+                  
+
+                  network = new vis.Network(container, data, options);
+
+                  
+
+                  
+
+                  
+
+
+                  
+
+                  return network;
+
+              }
+              drawGraph();
+        </script>
+    </body>
+</html>
