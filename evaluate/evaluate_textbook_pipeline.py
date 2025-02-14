@@ -12,6 +12,9 @@ if len(sys.argv) <= 7 or len(sys.argv) >= 9:
 
     sys.exit()
 
+root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(root_path)
+
 llm = sys.argv[1]
 temp = float(sys.argv[2])
 st_model = sys.argv[3]

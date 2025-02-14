@@ -1,26 +1,32 @@
 import sys
+import os
+from dotenv import load_dotenv
+import warnings
+warnings.filterwarnings('ignore')
+
+load_dotenv()
+os.environ['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY')
+
 if len(sys.argv) > 5 or len(sys.argv) < 5:
     print('usage: <llm> <sentence transformer> <course to evaluate> <threshold>')
     print('available courses: CS2, CCDA (cloud computing for data analysis)')
+    sys.exit()
 
-# sys.path.insert(0, '../src')
+root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(root_path)
+
 llm = sys.argv[1]
 st_model = sys.argv[2]
-course = sys.argv[3]
-threshold = sys.argv[4]
+course = sys.argv[3].upper()
+threshold = float(sys.argv[4])
 
-from ..src.generator import RAGKGGenerator
-from os import getenv, environ
-from dotenv import load_dotenv
+from src.generator import RAGKGGenerator
+from src.llms import OpenAIModel
 from src.metrics import AnswerCorrectness, SemanticSimilarity
 from deepeval.test_case import LLMTestCase
 
-load_dotenv()
-environ['OPENAI_API_KEY'] = getenv('OPENAI_API_KEY')
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
-
-from src.llms import OpenAIModel
 
 # setup
 if course == 'CS2': # for evaluating syllabus of CS2-DS course
@@ -75,8 +81,8 @@ if course == 'CS2': # for evaluating syllabus of CS2-DS course
         CHUNK_SIZE,
         CHUNK_OVERLAP,
         OpenAIModel(model_name = llm),
-        getenv('cs2'),
-        '../data/Syllabusfor202380-Fall2023-ITSC-2214-001-DataStructuresandAlgorithms.pdf',
+        os.getenv('cs2'),
+        './data/Syllabusfor202380-Fall2023-ITSC-2214-001-DataStructuresandAlgorithms.pdf', # change based on current working directory
         st_model = st_model
     )
 
@@ -133,8 +139,8 @@ elif course == 'CCDA':
         CHUNK_SIZE, 
         CHUNK_OVERLAP, 
         OpenAIModel(model_name = llm), 
-        getenv('ccda'), 
-        '../data/Syllabus for 202380-Fall 2023-ITCS-3190-001-Cloud Comp for Data Analysis.pdf',
+        os.getenv('ccda'), 
+        './data/Syllabus for 202380-Fall 2023-ITCS-3190-001-Cloud Comp for Data Analysis.pdf', # replace this with respect to current working directory
         st_model = st_model
     )
 else:
@@ -153,19 +159,32 @@ metrics = [AnswerCorrectness(threshold, gen.llm), SemanticSimilarity(threshold, 
 
 inp = 'No input provided'
 
-with open(f'../results/results_{course}_syllabus_{st_model}_{llm}', 'w') as f:
+if os.getcwd().endswith('rag'):
+    save_to = f'./results/results_{course}_syllabus_{st_model}_{llm}.txt'
+else:
+    f'../results/results_{course}_syllabus_{st_model}_{llm}.txt'
+
+with open(save_to, 'w') as f:
+    f.write('-' * 30 + '\n')
+    f.write(f'OPENAI MODEL: {gen.llm.get_model_name()}\n')
+    f.write(f'SENTENCE TRANSFORMER: {gen.embedding_model}\n')
+    f.write(f'COURSE: {course}\n')
+    f.write(f'CHUNK SIZE: {CHUNK_SIZE}\n')
+    f.write(f'CHUNK OVERLAP: {CHUNK_OVERLAP}\n')
+    f.write('-' * 30 + '\n')
+
     for metric in metrics:
-        print('-' * 30)
-        for result, truth in zip(actual, expected):
-            test_case = LLMTestCase(inp, result, truth)
+        for i in range(len(actual)):
+            test_case = LLMTestCase(inp, ' '.join(actual[i]), ' '.join(expected[i]))
             metric.measure(test_case)
 
-            f.write(f'Metric: {metric.__name__}')
-            f.write(f'Score: {metric.score}')
-            f.write(f'Reason: {metric.reason}')
-            f.write(f'Actual: {result}')
-            f.write(f'Expected: {expected}')
-            f.write('-' * 30)
+            f.write(f'Metric: {metric.__name__}\n')
+            f.write(f'Testing: {"Topics" if i == 0 else "Objectives"}\n')
+            f.write(f'Score: {metric.score}\n')
+            f.write(f'Reason: {metric.reason}\n')
+            f.write(f'Actual: {actual[i]}\n')
+            f.write(f'Expected: {expected[i]}\n')
+            f.write('-' * 30 + '\n')
 
 
 
