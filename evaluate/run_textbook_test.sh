@@ -24,8 +24,8 @@ do
             do
                 for transformer in "${SENTENCE_TRANSFORMERS[@]}"
                 do
-                    srun python3 evaluate.py $llm $transformer $retriever $course $test $NUM_GENERATE $THRESHOLD
-                    echo "Submitted job python3 evaluate.py $llm $transformer $retriever $course $test $NUM_GENERATE $THRESHOLD"
+                    srun python3 evaluate_textbook_pipeline.py $llm $transformer $retriever $course $test $NUM_GENERATE $THRESHOLD
+                    echo "Submitted job python3 evaluate_textbook_pipeline.py $llm $transformer $retriever $course $test $NUM_GENERATE $THRESHOLD"
                 done
             done
         done

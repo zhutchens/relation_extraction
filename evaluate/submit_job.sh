@@ -7,4 +7,4 @@
 #SBATCH --time=1:00:00
 #SBATCH --mem=32GB
 
-bash run_test.sh
+bash run_textbook_test.sh

@@ -2,7 +2,7 @@ import sys
 import os 
 
 if len(sys.argv) <= 6 or len(sys.argv) >= 9:
-    print('usage: <llm> <retriever_type> <sentence_transformer_model> <course> <what_to_test> <num_to_generate> <threshold>')
+    print('usage: <llm> <sentence_transformer_model> <retriever_type> <course> <what_to_test> <num_to_generate> <threshold>')
     print('---Argument explanations---')
     print('\tllm: language model to use')
     print('\tsentence_transformer_model: sentence transformer model to use for embeddings')
