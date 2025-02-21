@@ -5,7 +5,7 @@ from langchain_core.documents import Document
 from deepeval.models import DeepEvalBaseLLM
 
 
-class RetrievalSystem:
+class TransformerRetriever:
     def __init__(self, content: str | list[str], chunk_size: int, chunk_overlap: int, model: str) -> None:
         '''
         Construct a retrieval system using sentence transformers 
@@ -15,21 +15,19 @@ class RetrievalSystem:
             chunk_size (itn): number of characters to have in a chunk of the content
             chunk_overlap (int): number of characters to overlap between chunks
             model (str): sentence transformer model to use 
-
-        https://sbert.net/examples/applications/retrieve_rerank/README.html
         '''
         self.embedder = SentenceTransformer(model)
 
         self.chunks_as_docs = chunk_doc(content, chunk_size, chunk_overlap)
         # normalizing text here for for best keyword results from bm25
-        self.chunks_as_strings = [doc.page_content.replace('\n\n', ' 3') for doc in self.chunks_as_docs]
+        self.chunks_as_strings = [doc.page_content.replace('\n\n', '') for doc in self.chunks_as_docs]
 
         self.bm25 = BM25Okapi([self.embedder.tokenizer.tokenize(string) for string in self.chunks_as_strings])
 
         self.corpora_embeddings = self.embedder.encode(self.chunks_as_strings)
 
     
-    def pipeline(self, chapter_name: str, llm: DeepEvalBaseLLM) -> list[Document]:
+    def pipeline(self, chapter_name: str, llm: DeepEvalBaseLLM) -> list[str]:
         '''
         Retrieval pipeline using hybrid search 
 
@@ -38,7 +36,7 @@ class RetrievalSystem:
             llm: llm to use for generating queries
 
         Returns:
-            list[Document]: list of top n documents
+            list[str]: list of top n documents
 
         ''' 
         chapter_prompt = f'''
@@ -84,7 +82,7 @@ class RetrievalSystem:
 
         Args:
             query (str): query to retriever
-            k (int, default 4): number of relevant docs to retrieve
+            k (int, default 10): number of relevant docs to retrieve
 
         Returns:
             list[dict[str, int | float]]
@@ -105,3 +103,8 @@ class RetrievalSystem:
             list[float]
         '''
         return self.bm25.get_scores(self.embedder.tokenizer.tokenize(normalize_text(query))).tolist()
+
+
+    @property
+    def __name__(self):
+        return 'Transformer Retriever'

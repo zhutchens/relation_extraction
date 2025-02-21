@@ -5,14 +5,13 @@ from lmformatenforcer import JsonSchemaParser
 from pydantic import BaseModel
 import json
 import torch
-import requests
 
 class HuggingFaceLLM(DeepEvalBaseLLM):
     def __init__(self, model_name: str = 'mistralai/Mistral-7B-Instruct-v0.3', temperature: float = 0.0):
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.pipeline = pipeline("text-generation", model = self.model, tokenizer = self.tokenizer, temperature = temperature).to(device)
+        self.pipeline = pipeline("text-generation", model = self.model, tokenizer = self.tokenizer, temperature = temperature).to(self.device)
         self.model_name = model_name
         self.temperature = temperature
 

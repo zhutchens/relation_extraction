@@ -5,7 +5,7 @@ from nltk.stem import WordNetLemmatizer
 from langchain_core.documents import Document
 from string import punctuation
 from sentence_transformers import CrossEncoder
-from langchain_community.document_loaders import UnstructuredURLLoader, UnstructuredFileLoader
+from unstructured.partition.auto import partition
 from unstructured.cleaners.core import clean_extra_whitespace, clean_non_ascii_chars
 import os
 import validators
@@ -73,41 +73,54 @@ def chunk_doc(documents: list[str] | str, chunk_size: int, chunk_overlap: int) -
     Returns:
         list[str]: list of text chunks
     '''
-    def process_loader(loader):
-        content = ''
-        for chunk in loader.load():
-            content += chunk.page_content + ' '
+    # def process_loader(loader):
+    #     content = ''
+    #     for chunk in loader.load():
+    #         content += chunk.page_content + ' '
 
-        return content
+    #     return content
     
     splitter = CharacterTextSplitter(chunk_size = chunk_size, chunk_overlap = chunk_overlap)
 
-    all_doc_content = ''
+    # all_doc_content = ''
 
-    if isinstance(documents, list): # if documents is a list (could contain a mix of files, links, and python strings)
-        document_dict = {'urls': [], 'files': [], 'strings': []}
-        for doc in documents:
-            if os.path.exists(doc):
-                document_dict['files'].append(doc)
-            elif validators.url(doc):
-                document_dict['urls'].append(doc)
-            else:
-                document_dict['strings'].append(doc)
+    # if isinstance(documents, list): # if documents is a list (could contain a mix of files, links, and python strings)
+    #     document_dict = {'urls': [], 'files': [], 'strings': []}
+    #     for doc in documents:
+    #         if os.path.exists(doc):
+    #             document_dict['files'].append(doc)
+    #         elif validators.url(doc):
+    #             document_dict['urls'].append(doc)
+    #         else:
+    #             document_dict['strings'].append(doc)
 
-        url_loader = UnstructuredURLLoader(document_dict['urls'])
-        file_loader = UnstructuredFileLoader(document_dict['files'])
-        string_loader = [Document(page_content = value) for value in document_dict['strings']]
+        # url_loader = UnstructuredURLLoader(document_dict['urls'])
+        # file_loader = UnstructuredFileLoader(document_dict['files'])
 
-        for loader in [url_loader, file_loader, string_loader]:
-            all_doc_content += process_loader(loader)
+        # url_loader = []
+        # for url in document_dict['urls']:
+        #     url_elements = partition(url = url)
+        #     url_loader.extend([Document(page_content = element) for element in url_elements])
 
-        return splitter.create_documents(all_doc_content)
+        # file_loader = []
+        # for f in document_dict['files']:
+        #     file_elements = partition(filename = f)
+        #     file_loader.extend([Document(page_content = element) for element in file_elements])
 
-    elif os.path.exists(documents): # if documents is a single file
-        return UnstructuredFileLoader(documents).load_and_split(splitter)
+        # string_loader = [Document(page_content = value) for value in document_dict['strings']]
+
+        # for loader in [url_loader, file_loader, string_loader]:
+        #     all_doc_content += process_loader(loader)
+
+        # return splitter.create_documents(all_doc_content)
+
+    if os.path.exists(documents): # if documents is a single file
+        elements = partition(filename = documents)
+        return splitter.create_documents([str(el) for el in elements])
 
     elif validators.url(documents): # if documents is a single url
-        return UnstructuredURLLoader([documents]).load_and_split(splitter)
+        elements = partition(url = documents)
+        return splitter.create_documents([str(el) for el in elements])
 
     else: # if documents is an actual python string
         return splitter.create_documents(documents)

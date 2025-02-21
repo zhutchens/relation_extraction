@@ -82,9 +82,11 @@ if course == 'CS2': # for evaluating syllabus of CS2-DS course
         CHUNK_OVERLAP,
         OpenAIModel(model_name = llm),
         os.getenv('cs2'),
-        './data/Syllabusfor202380-Fall2023-ITSC-2214-001-DataStructuresandAlgorithms.pdf', # change based on current working directory
+        '../data/Syllabusfor202380-Fall2023-ITSC-2214-001-DataStructuresandAlgorithms.pdf', # change based on current working directory
         st_model = st_model
     )
+
+    
 
 elif course == 'CCDA':
     objectives = [
@@ -140,18 +142,16 @@ elif course == 'CCDA':
         CHUNK_OVERLAP, 
         OpenAIModel(model_name = llm), 
         os.getenv('ccda'), 
-        './data/Syllabus for 202380-Fall 2023-ITCS-3190-001-Cloud Comp for Data Analysis.pdf', # replace this with respect to current working directory
+        '../data/Syllabus for 202380-Fall 2023-ITCS-3190-001-Cloud Comp for Data Analysis.pdf', # replace this with respect to current working directory
         st_model = st_model
     )
+
 else:
     raise ValueError('incorrect value! only use CS2 or CCDA as the course arg')
 
 
 gen_topics = gen.identify_main_topics()
 gen_objectives = gen.objectives_from_syllabus()
-
-ac = AnswerCorrectness()
-similarity = SemanticSimilarity()
 
 actual = [gen_topics, gen_objectives]
 expected = [topics, objectives]
@@ -162,7 +162,7 @@ inp = 'No input provided'
 if os.getcwd().endswith('rag'):
     save_to = f'./results/results_{course}_syllabus_{st_model}_{llm}.txt'
 else:
-    f'../results/results_{course}_syllabus_{st_model}_{llm}.txt'
+    save_to = f'../results/results_{course}_syllabus_{st_model}_{llm}.txt'
 
 with open(save_to, 'w') as f:
     f.write('-' * 30 + '\n')
@@ -173,9 +173,10 @@ with open(save_to, 'w') as f:
     f.write(f'CHUNK OVERLAP: {CHUNK_OVERLAP}\n')
     f.write('-' * 30 + '\n')
 
-    for metric in metrics:
-        for i in range(len(actual)):
+    for i in range(len(actual)):
+        for metric in metrics:
             test_case = LLMTestCase(inp, ' '.join(actual[i]), ' '.join(expected[i]))
+
             metric.measure(test_case)
 
             f.write(f'Metric: {metric.__name__}\n')
@@ -186,6 +187,7 @@ with open(save_to, 'w') as f:
             f.write(f'Expected: {expected[i]}\n')
             f.write('-' * 30 + '\n')
 
+print('Done')
 
 
 

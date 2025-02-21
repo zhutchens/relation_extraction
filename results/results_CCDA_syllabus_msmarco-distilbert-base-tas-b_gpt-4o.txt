@@ -1,0 +1,35 @@
+------------------------------
+OPENAI MODEL: gpt-4o
+SENTENCE TRANSFORMER: msmarco-distilbert-base-tas-b
+COURSE: CCDA
+CHUNK SIZE: 500
+CHUNK OVERLAP: 100
+------------------------------
+Metric: Answer Correctness
+Testing: Topics
+Score: 0.5
+Reason: The actual output includes relevant topics like Cloud Computing, Data Analysis, Distributed Computing, Hadoop, Spark, MapReduce, and Information Retrieval, which align with the expected output. However, it omits specific terms such as HDFS, YARN, Pig, Hive, and does not mention 'Algorithms' explicitly. Additionally, 'PageRank' is written as 'PageRank' instead of 'Page Rank'.
+Actual: ['Cloud Computing', 'Data Analysis', 'Distributed Computing', 'Hadoop', 'Spark', 'MapReduce', 'Data Science', 'Big Data Processing', 'Machine Learning (Clustering, Classification)', 'Information Retrieval', 'Web Search', 'PageRank']
+Expected: ['Distributed Computing and Clouds', 'Data Analysis Algorithms (clustering, classification)', 'Hadoop', 'HDFS', 'YARN', 'MapReduce', 'Pig', 'Hive', 'Spark', 'Information Retrieval', 'Web Search', 'Page Rank']
+------------------------------
+Metric: Answer Correctness
+Testing: Objectives
+Score: 0.5
+Reason: The actual output captures the core ideas of understanding cloud platforms, applying concepts, and demonstrating programming skills, but lacks details on deploying, analyzing data, and discovering insights or developing predictive applications.
+Actual: ['understanding of cloud platforms and tools for data analysis', 'apply concepts to real problems through hands-on experience', 'demonstrate programming skills for cloud platforms']
+Expected: ['To enable students to demonstrate an understanding of the basic concepts of cloud platforms and tools for data analysis', 'To enable students to apply these concepts to real problems through extensive hands-on experience in deploying and analyzing data using cloud tools discovering actionable insights from large-scale data or develop predictive applications', 'To enable students to demonstrate programming skills for cloud platforms']
+------------------------------
+Metric: SemanticSimilarity
+Testing: Topics
+Score: 0.9263807535171509
+Reason: None
+Actual: ['Cloud Computing', 'Data Analysis', 'Distributed Computing', 'Hadoop', 'Spark', 'MapReduce', 'Data Science', 'Big Data Processing', 'Machine Learning (Clustering, Classification)', 'Information Retrieval', 'Web Search', 'PageRank']
+Expected: ['Distributed Computing and Clouds', 'Data Analysis Algorithms (clustering, classification)', 'Hadoop', 'HDFS', 'YARN', 'MapReduce', 'Pig', 'Hive', 'Spark', 'Information Retrieval', 'Web Search', 'Page Rank']
+------------------------------
+Metric: SemanticSimilarity
+Testing: Objectives
+Score: 0.9344107508659363
+Reason: None
+Actual: ['understanding of cloud platforms and tools for data analysis', 'apply concepts to real problems through hands-on experience', 'demonstrate programming skills for cloud platforms']
+Expected: ['To enable students to demonstrate an understanding of the basic concepts of cloud platforms and tools for data analysis', 'To enable students to apply these concepts to real problems through extensive hands-on experience in deploying and analyzing data using cloud tools discovering actionable insights from large-scale data or develop predictive applications', 'To enable students to demonstrate programming skills for cloud platforms']
+------------------------------

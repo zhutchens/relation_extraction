@@ -2,7 +2,6 @@ from langchain_core.embeddings import Embeddings
 from sentence_transformers import SentenceTransformer
 import torch
 
-
 class TransformerEmbeddings(Embeddings):
     def __init__(self, model: str):
         '''

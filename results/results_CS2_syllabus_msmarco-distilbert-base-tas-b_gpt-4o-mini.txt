@@ -1,5 +1,5 @@
 ------------------------------
-OPENAI MODEL: gpt-4o
+OPENAI MODEL: gpt-4o-mini
 SENTENCE TRANSFORMER: msmarco-distilbert-base-tas-b
 COURSE: CS2
 CHUNK SIZE: 500
@@ -8,21 +8,21 @@ CHUNK OVERLAP: 100
 Metric: Answer Correctness
 Testing: Topics
 Score: 0.2
-Reason: The actual output includes some relevant topics like Linked Lists, Stacks, Queues, Trees, Graphs, and Hash Maps, but misses many others such as Collections, Abstract Data Types, and Unit Testing from the expected output.
-Actual: ['Data Structures', 'Algorithms', 'Linked Lists', 'Stacks', 'Queues', 'Generic Lists', 'Hash Maps', 'Trees', 'Graphs', 'Algorithmic Analysis', 'Big-O Complexity', 'Recursion', 'Sorting', 'Searching']
+Reason: The actual output includes some relevant topics like 'Generics' and 'Big O Notation', but it lacks key elements from the expected output such as 'Collections', 'Interfaces', and proper formatting with '&' and commas.
+Actual: ['Data Structures', 'Algorithms', 'Abstract Data Types (ADTs)', 'Generics', 'Big O Notation', 'Unit Testing', 'Exception Handling', 'Arrays', 'ArrayLists', 'Stacks', 'Queues', 'Linked Structures', 'Lists', 'Recursion', 'Searching', 'Sorting', 'Trees', 'Heaps', 'Graphs', 'Hash Tables', 'Hash Maps']
 Expected: ['Collections, Abstract Data Types, Interfaces, Generics', 'Unit Testing, Exception Handling, JavaDoc', 'Big O Notation & Analysis', 'Arrays & ArrayLists', 'Stacks & Queues', 'Comparing, Sorting & Searching', 'Linked Nodes and Linked Structures', 'Lists', 'Recursion & Recursive Searching & SortingTrees & Heaps', 'Graphs', 'Hash Functions, Hash Tables, and Hash Maps']
 ------------------------------
 Metric: SemanticSimilarity
 Testing: Topics
-Score: 0.871027946472168
+Score: 0.9309006333351135
 Reason: None
-Actual: ['Data Structures', 'Algorithms', 'Linked Lists', 'Stacks', 'Queues', 'Generic Lists', 'Hash Maps', 'Trees', 'Graphs', 'Algorithmic Analysis', 'Big-O Complexity', 'Recursion', 'Sorting', 'Searching']
+Actual: ['Data Structures', 'Algorithms', 'Abstract Data Types (ADTs)', 'Generics', 'Big O Notation', 'Unit Testing', 'Exception Handling', 'Arrays', 'ArrayLists', 'Stacks', 'Queues', 'Linked Structures', 'Lists', 'Recursion', 'Searching', 'Sorting', 'Trees', 'Heaps', 'Graphs', 'Hash Tables', 'Hash Maps']
 Expected: ['Collections, Abstract Data Types, Interfaces, Generics', 'Unit Testing, Exception Handling, JavaDoc', 'Big O Notation & Analysis', 'Arrays & ArrayLists', 'Stacks & Queues', 'Comparing, Sorting & Searching', 'Linked Nodes and Linked Structures', 'Lists', 'Recursion & Recursive Searching & SortingTrees & Heaps', 'Graphs', 'Hash Functions, Hash Tables, and Hash Maps']
 ------------------------------
 Metric: Answer Correctness
 Testing: Objectives
 Score: 0.8
-Reason: The actual output includes an additional point about using built-in data structures in an object-oriented programming language, which is not in the expected output. Otherwise, the content aligns well with the expected output.
+Reason: The actual output is mostly factually correct and aligns with the expected output, but there are minor grammatical differences and a typo in 'appropriate' that affect the overall accuracy.
 Actual: ['Use built-in data structures in an object-oriented programming language', 'Compare and analyze basic building blocks of data structures, arrays, ArrayList, and linked lists', 'Implement data structures (such as stacks, queues, generic lists, trees, hash maps, and graphs) based on an ADT, using arrays, ArrayList, or linked nodes, as appropriate', 'Choose an appropriate data structure for a given problem/situation (such as stacks, queues, generic lists, trees, hash maps, graphs)', 'Apply data structures (such as stacks, queues, generic lists, trees, hash maps, and graphs) to solve a given problem', 'Use generics to ensure appropriate generalization of code', 'Analyze the Big-O complexity of an algorithm or function', 'Write and execute test cases for a class', 'Trace and analyze recursive algorithms']
 Expected: ['Compare and analyze basic building blocks of data structures, arrays, ArrayList, and linked lists', 'Implement data structures (such as stacks, queues, generic lists, trees, hash maps, and graphs) based on an ADT, using arrays,ArrayList, or linked nodes, as appropriateChoose an appropriate', 'Choose an appropiate data structure for a given problem/situation (such as stacks, queues, generic lists, trees, hash maps, graphs)', 'Apply data structures (such as stacks, queues, generic lists, trees, hash maps, and graphs) to solve a given problem', 'Use generics to ensure appropriate generalization of code', 'Analyze the Big-O complexity of an algorithm or function', 'Write and execute test cases for a class', 'Trace and analyze recursive algorithm']
 ------------------------------

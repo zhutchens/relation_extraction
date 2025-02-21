@@ -7,12 +7,11 @@ import hypernetx as hnx
 import matplotlib.pyplot as plt
 import plotly.express as px 
 import graphlib
-from src.retrieval import RetrievalSystem
+from src.retrievers import TransformerRetriever, VectorDBRetriever
 from deepeval.test_case import LLMTestCase
-from src.utils import create_concept_graph_structure, clean, process_pair
-from concurrent.futures import ThreadPoolExecutor
+from src.utils import create_concept_graph_structure
 from deepeval.models import DeepEvalBaseLLM
-from langchain_community.document_loaders import UnstructuredURLLoader, UnstructuredFileLoader
+from unstructured.partition.auto import partition
 import validators
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
@@ -20,7 +19,6 @@ from sklearn.decomposition import PCA
 from scipy.cluster.hierarchy import dendrogram, linkage
 
 
-# NOTE: Currently one main issue, the function that finds the associations between chapters seems to be broken. I think its the algorithm thats wrong. It also takes 10+ minutes to run
 class RAGKGGenerator:
     '''
     
@@ -33,9 +31,10 @@ class RAGKGGenerator:
                 textbooks: list[str] | str,
                 syllabus: str = None,
                 st_model: str = 'msmarco-distilbert-base-tas-b',
+                retriever_type: str = 'transformer', 
                 ):
         '''
-        Constructor to create a large language model relation extractor class. 
+        Constructor to create a large language model relation extractor class 
 
         Args:
             chapters (list[str] or list[list[str]]): list of chapter/section names in link
@@ -45,6 +44,7 @@ class RAGKGGenerator:
             textbooks (list[str] | str): textbooks to use 
             syllabus (str, default None): syllabus to use
             st_model (str, default msmarco-distilbert-base-tas-b'): sentence transformer to use 
+            retriever_type (str, default transformer): type of retriever to use (transformer or vectordb)
         '''
         if not isinstance(textbooks, list) and not isinstance(textbooks, str): 
             raise ValueError(f'document must be of type list or str, got type {type(textbooks)}')
@@ -53,9 +53,11 @@ class RAGKGGenerator:
 
         if syllabus is not None:
             if os.path.exists(syllabus):
-                self.syllabus = UnstructuredFileLoader(syllabus).load()
+                elements = partition(filename = syllabus)
+                self.syllabus = ' '.join([str(el) for el in elements])
             elif validators.url(syllabus):
-                self.syllabus = UnstructuredURLLoader([syllabus]).load()
+                elements = partition(url = syllabus)
+                self.syllabus = ' '.join([str(el) for el in elements])
             else:
                 self.syllabus = syllabus
 
@@ -63,7 +65,6 @@ class RAGKGGenerator:
          
         self.embedding_model = st_model
 
-        # this seems like bad practice but whatever lol
         self.terminology, self.kg, self.main_topics, self.dependencies, self.main_topic_relationships, self.summarization, self.build_terminology_embeddings = None, None, None, None, None, None, None
 
         self.concepts, self.outcomes, self.key_terms, self.pcas = [], [], [], []
@@ -71,7 +72,12 @@ class RAGKGGenerator:
 
         self.llm = llm 
 
-        self.retriever = RetrievalSystem(self.textbooks, chunk_size, chunk_overlap, st_model)
+        if retriever_type.lower() == 'transformer':
+            self.retriever = TransformerRetriever(self.textbooks, chunk_size, chunk_overlap, st_model)
+        elif retriever_type.lower() == 'vectordb':
+            self.retriever = VectorDBRetriever(self.textbooks, chunk_size, chunk_overlap, st_model)
+        else:
+            raise ValueError('invalid value for retriever_type, use transformer or vectordb')
 
     
     def syllabus_pipeline(self) -> tuple:
@@ -93,12 +99,12 @@ class RAGKGGenerator:
         # task a
         self.identify_main_topics() 
         
-        objective_prompt = f'''
-                Identify the learning objectives from this syllabus: {self.syllabus}
+        # objective_prompt = f'''
+        #         Identify the learning objectives from this syllabus: {self.syllabus}
 
-                Format:
-                objective_1::objective_2::objective_3...objective_n
-                '''
+        #         Format:
+        #         objective_1::objective_2::objective_3...objective_n
+        #         '''
             # for v in topic_clusters.values():
             #     for next_v in topic_clusters.values():
             #         if v != next_v:
@@ -106,7 +112,7 @@ class RAGKGGenerator:
             #             if response == 'True':
             #                 topic_relationships[topic].append((v, next_v))
         # task b
-        syllabus_objectives = self.llm.generate(objective_prompt) 
+        # syllabus_objectives = self.llm.generate(objective_prompt) 
 
         topic_objectives = []
         topic_relationships = {}
