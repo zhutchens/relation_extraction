@@ -21,9 +21,9 @@ class AnswerCorrectness(BaseMetric):
         )   
         
         metric.measure(test_case)
-        self.success = metric.is_successful()
         self.reason = metric.reason
         self.score = metric.score
+        self.success = self.score >= self.threshold
         return self.score
 
     async def a_measure(self, test_case: LLMTestCase, _show_indicator: bool) -> float: 
