@@ -1,3 +1,5 @@
+print('Starting evaluation...', flush = True)
+
 import sys
 import os 
 
@@ -73,8 +75,8 @@ if course == 'cs2':
         'Limits to Computation',
     ]
 
-    data = pd.read_csv('data/dsa_clifford_a_shaffer_3_2_java.csv') # replace with path respective to cwd 
-    # ex. if running from evaluate/ directory, use ../data/dsa_clifford_a_shaffer_3_2_java.csv
+    data = pd.read_csv('../data/dsa_clifford_a_shaffer_3_2_java.csv') # replace with path respective to cwd 
+    # ex. if running from rag/ directory, use ./data/dsa_clifford_a_shaffer_3_2_java.csv
 
 elif course == 'ccda':
     chapters = [
@@ -104,8 +106,8 @@ elif course == 'ccda':
         'Cascading'
     ]
 
-    data = pd.read_csv('data/hadoop_the_definitive_guide.csv') # replace with path respective to cwd 
-    # ex. if running from evaluate/ directory, use ../data/hadoop_the_definitive_guide.csv
+    data = pd.read_csv('../data/hadoop_the_definitive_guide.csv') # replace with path respective to cwd 
+    # ex. if running from rag/ directory, use ./data/hadoop_the_definitive_guide.csv
 
 else:
     raise ValueError('incorrect value! only use cs2 or ccda as the course arg')
@@ -192,4 +194,4 @@ with open(f'results_{course.upper()}_textbook_{testing}_{st_model}_{gen.llm.get_
     for k, v in averages.items():
         f.write(f'{k}: {v}\n')
 
-print(f'Evaluation complete.')
+print(f'Evaluation complete.', flush = True)

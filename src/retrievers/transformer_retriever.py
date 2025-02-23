@@ -107,4 +107,4 @@ class TransformerRetriever:
 
     @property
     def __name__(self):
-        return 'Transformer Retriever'
+        return 'TransformerRetriever'

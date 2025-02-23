@@ -10,6 +10,7 @@ from unstructured.cleaners.core import clean_extra_whitespace, clean_non_ascii_c
 import os
 import validators
 from string import punctuation
+from langchain_text_splitters.sentence_transformers import SentenceTransformersTokenTextSplitter
 
 
 def process_pair(first, second, llm):
@@ -61,7 +62,7 @@ def rank_docs(queries_and_docs) -> list[Document]:
     return [doc for (query, doc), score in sorted_docs]
 
 
-def chunk_doc(documents: list[str] | str, chunk_size: int, chunk_overlap: int) -> list[Document]:
+def chunk_doc(documents: list[str] | str, chunk_size: int, chunk_overlap: int, splitter: str = 'character') -> list[Document]:
     '''
     Chunks an entire document
 
@@ -69,6 +70,7 @@ def chunk_doc(documents: list[str] | str, chunk_size: int, chunk_overlap: int) -
         documents (list[str] | str): documents to chunk
         chunk_size (int): number of characters in a chunk
         chunk_overlap (int): number characters that overlap between chunks
+        splitter (str, default character): type of text chunker to use. character to split on characters, transformer to split with sentence transformer 
 
     Returns:
         list[str]: list of text chunks
@@ -80,7 +82,12 @@ def chunk_doc(documents: list[str] | str, chunk_size: int, chunk_overlap: int) -
 
     #     return content
     
-    splitter = CharacterTextSplitter(chunk_size = chunk_size, chunk_overlap = chunk_overlap)
+    if splitter == 'character':
+        splitter = CharacterTextSplitter(chunk_size = chunk_size, chunk_overlap = chunk_overlap)
+    elif splitter == 'transformer':
+        splitter = SentenceTransformersTokenTextSplitter(chunk_size = chunk_size, chunk_overlap = chunk_overlap)
+    else:
+        raise ValueError('invalid value for splitter. use character or transformer')
 
     # all_doc_content = ''
 

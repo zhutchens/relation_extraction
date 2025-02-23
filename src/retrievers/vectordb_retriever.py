@@ -1,7 +1,9 @@
 from langchain_core.documents import Document
 from src.transformerEmbeddings import TransformerEmbeddings
 from src.utils import chunk_doc
-from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_qdrant import QdrantVectorStore
+from qdrant_client import QdrantClient
+from qdrant_client.http.models import VectorParams, Distance
 from src.utils import rank_docs
 from rank_bm25 import BM25Okapi
 from deepeval.models import DeepEvalBaseLLM
@@ -23,10 +25,15 @@ class VectorDBRetriever:
             chunk_overlap (int): number of characters to overlap between chunks
             model (str): sentence transformer model to use 
         '''
-        self.docs = [Document(doc.page_content) for doc in chunk_doc(content, chunk_size, chunk_overlap)]
+        self.docs = chunk_doc(content, chunk_size, chunk_overlap, 'transformer')
         self.docs_as_strings = [doc.page_content for doc in self.docs]
         
-        self.store = InMemoryVectorStore.from_documents(self.docs, embedding = TransformerEmbeddings(model))
+        client = QdrantClient(':memory:') 
+        # change size param to match sentence transformer output size (ex, 768 for msmarco-distilbert-base-tas-b)
+        client.create_collection('my_collection', vectors_config = VectorParams(size = 768, distance = Distance.COSINE))
+        self.store = QdrantVectorStore(client, 'my_collection', embedding = TransformerEmbeddings(model))
+        self.store.add_documents(self.docs)
+
         self.bm25 = BM25Okapi(corpus = [doc.page_content for doc in self.docs])
 
 
@@ -105,6 +112,6 @@ class VectorDBRetriever:
 
     @property
     def __name__(self):
-        return 'VectorDB Retriever'
+        return 'VectorDBRetriever'
 
 
